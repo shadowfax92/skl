@@ -29,6 +29,7 @@ func helpAliases(a []string) string {
 var groupOrder = []string{
 	"Inspect:",
 	"Load:",
+	"Interactive:",
 	"Library:",
 	"Sync:",
 	"Other:",
@@ -93,9 +94,9 @@ bundles of skills from a source library at ~/.config/skl/library/.
 
 Quick start:
   skl import              # seed library from current ~/.skills/
-  skl bundle create dev cso copy-editing
+  skl board               # vim-style: drag skills between bundles in $EDITOR
   skl load dev            # copies dev's skills into ~/.skills/
-  skl unload dev          # removes them
+  skl unload              # fzf-pick a loaded bundle to remove
   skl ls                  # show all bundles
   skl status              # show what's loaded right now
   skl sync                # git-sync the library`,
