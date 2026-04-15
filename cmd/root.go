@@ -97,6 +97,7 @@ Quick start:
   skl board               # vim-style: drag skills between bundles in $EDITOR
   skl load dev            # copies dev's skills into ~/.skills/
   skl unload              # fzf-pick a loaded bundle to remove
+  skl prune               # fzf-pick individual skills to wipe from ~/.skills/
   skl ls                  # show all bundles
   skl status              # show what's loaded right now
   skl sync                # git-sync the library`,

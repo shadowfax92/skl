@@ -59,6 +59,14 @@ var unloadCmd = &cobra.Command{
 		if len(chosen) == 0 {
 			loaded := st.LoadedBundles()
 			if len(loaded) == 0 {
+				dirs, _ := live.LoadedDirs()
+				if len(dirs) > 0 {
+					fmt.Printf("%s %d untracked skill(s) in ~/.skills/ — run %s to remove them.\n",
+						style.Faint("Nothing loaded by skl, but"),
+						len(dirs),
+						style.Cmd("skl prune"))
+					return nil
+				}
 				fmt.Println(style.Faint("Nothing to unload."))
 				return nil
 			}
