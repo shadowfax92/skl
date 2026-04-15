@@ -126,16 +126,16 @@ func (s *State) RemoveBundleClaim(skillID, bundle string) (orphaned bool) {
 	if !ok {
 		return false
 	}
-	filtered := entry.Bundles[:0]
+	filtered := make([]string, 0, len(entry.Bundles))
 	for _, b := range entry.Bundles {
 		if b != bundle {
 			filtered = append(filtered, b)
 		}
 	}
-	entry.Bundles = filtered
 	if len(filtered) == 0 {
 		return true
 	}
+	entry.Bundles = filtered
 	s.Loaded[skillID] = entry
 	return false
 }

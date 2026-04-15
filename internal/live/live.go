@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+
 func LivePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -124,6 +125,9 @@ func guardDirName(name string) error {
 	return nil
 }
 
+// copyTree recursively copies src into dst. Symlinks are skipped — skills can
+// come from untrusted git repos via `skl install`, and a malicious symlink
+// could otherwise cause reads outside the skill directory.
 func copyTree(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -140,15 +144,12 @@ func copyTree(src, dst string) error {
 			return err
 		}
 
+		if info.Mode()&os.ModeSymlink != 0 {
+			fmt.Fprintf(os.Stderr, "skl: skipping symlink %s\n", path)
+			return nil
+		}
 		if d.IsDir() {
 			return os.MkdirAll(target, info.Mode().Perm())
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, target)
 		}
 		return copyFile(path, target, info.Mode().Perm())
 	})

@@ -84,7 +84,11 @@ func Clone(url, dest string) error {
 	cmd := exec.Command("git", "clone", url, dest)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		_ = os.RemoveAll(dest)
+		return err
+	}
+	return nil
 }
 
 func run(dir string, args ...string) error {

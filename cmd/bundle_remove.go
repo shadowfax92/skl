@@ -35,17 +35,20 @@ var bundleRemoveCmd = &cobra.Command{
 		}
 
 		var kept []string
+		removed := 0
 		for _, s := range bundles[name] {
-			if !dropSet[s] {
-				kept = append(kept, s)
+			if dropSet[s] {
+				removed++
+				continue
 			}
+			kept = append(kept, s)
 		}
 		bundles[name] = kept
 
 		if err := library.WriteBundles(bundles); err != nil {
 			return err
 		}
-		fmt.Printf("%s %d skill(s) from bundle %q\n", style.OK("removed"), len(bundles[name]), name)
+		fmt.Printf("%s %d skill(s) from bundle %q\n", style.OK("removed"), removed, name)
 		return nil
 	},
 }

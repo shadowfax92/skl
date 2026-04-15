@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 // copyDir recursively copies src into dst. Used by `import` and `push` where
 // we copy into the library (live.CopySkill is the inverse direction).
+// Symlinks are skipped — same rationale as live.copyTree.
 func copyDir(src, dst string) error {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
@@ -26,15 +28,12 @@ func copyDir(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			fmt.Fprintf(os.Stderr, "skl: skipping symlink %s\n", path)
+			return nil
+		}
 		if d.IsDir() {
 			return os.MkdirAll(target, info.Mode().Perm())
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			link, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			return os.Symlink(link, target)
 		}
 		return copyFile(path, target, info.Mode().Perm())
 	})

@@ -178,11 +178,12 @@ func WriteBundles(b map[string][]string) error {
 		return err
 	}
 
+	cleaned := make(map[string][]string, len(b))
 	for name, skills := range b {
-		b[name] = dedupSorted(skills)
+		cleaned[name] = dedupSorted(skills)
 	}
 
-	data, err := yaml.Marshal(bundleFile{Bundles: b})
+	data, err := yaml.Marshal(bundleFile{Bundles: cleaned})
 	if err != nil {
 		return fmt.Errorf("marshaling bundles.yaml: %w", err)
 	}
