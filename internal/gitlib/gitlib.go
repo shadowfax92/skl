@@ -18,7 +18,12 @@ func Init(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return run(dir, "init")
+	return run(dir, "init", "-b", "main")
+}
+
+func HasUpstream(dir string) bool {
+	_, err := output(dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	return err == nil
 }
 
 func RemoteURL(dir string) (string, error) {

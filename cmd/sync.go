@@ -38,8 +38,10 @@ var syncCmd = &cobra.Command{
 		if err := gitlib.AddCommit(libDir, msg); err != nil {
 			return fmt.Errorf("commit: %w", err)
 		}
-		if err := gitlib.PullRebase(libDir); err != nil {
-			return fmt.Errorf("pull --rebase: %w", err)
+		if gitlib.HasUpstream(libDir) {
+			if err := gitlib.PullRebase(libDir); err != nil {
+				return fmt.Errorf("pull --rebase: %w", err)
+			}
 		}
 		if err := gitlib.Push(libDir); err != nil {
 			return fmt.Errorf("push: %w", err)
