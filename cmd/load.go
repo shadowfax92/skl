@@ -15,6 +15,7 @@ import (
 
 func init() {
 	loadCmd.Flags().StringSlice("skill", nil, "Load individual skill(s) directly (repeatable)")
+	loadCmd.Flags().BoolP("force", "f", false, "Re-copy skills already loaded (pick up library edits)")
 	rootCmd.AddCommand(loadCmd)
 }
 
@@ -25,6 +26,7 @@ var loadCmd = &cobra.Command{
 	Short:       "Load bundles into ~/.skills/ (fzf when no args)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		individualSkills, _ := cmd.Flags().GetStringSlice("skill")
+		force, _ := cmd.Flags().GetBool("force")
 
 		bundles, err := library.Bundles()
 		if err != nil {
@@ -57,7 +59,7 @@ var loadCmd = &cobra.Command{
 			return err
 		}
 
-		totalLoaded, totalAlready := 0, 0
+		totalLoaded, totalReloaded, totalAlready := 0, 0, 0
 
 		for _, name := range chosen {
 			skills, ok := bundles[name]
@@ -68,16 +70,24 @@ var loadCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			loaded, already, err := applyLoadPlan(plan, st)
+			loaded, reloaded, already, err := applyLoadPlan(plan, st, force)
 			if err != nil {
 				return fmt.Errorf("loading bundle %q: %w", name, err)
 			}
 			totalLoaded += loaded
+			totalReloaded += reloaded
 			totalAlready += already
-			fmt.Printf("%s bundle %q  %s %d new  %s %d already loaded\n",
-				style.OK("loaded"), name,
-				style.Faint("+"), loaded,
-				style.Faint("="), already)
+			if force && reloaded > 0 {
+				fmt.Printf("%s bundle %q  %s %d new  %s %d reloaded\n",
+					style.OK("loaded"), name,
+					style.Faint("+"), loaded,
+					style.Faint("↻"), reloaded)
+			} else {
+				fmt.Printf("%s bundle %q  %s %d new  %s %d already loaded\n",
+					style.OK("loaded"), name,
+					style.Faint("+"), loaded,
+					style.Faint("="), already)
+			}
 		}
 
 		for _, id := range individualSkills {
@@ -89,11 +99,12 @@ var loadCmd = &cobra.Command{
 				Bundle:  "__skill__",
 				Actions: []bundle.LoadAction{{Skill: *s, Already: stateHas(st, id)}},
 			}
-			loaded, already, err := applyLoadPlan(synthetic, st)
+			loaded, reloaded, already, err := applyLoadPlan(synthetic, st, force)
 			if err != nil {
 				return fmt.Errorf("loading skill %q: %w", id, err)
 			}
 			totalLoaded += loaded
+			totalReloaded += reloaded
 			totalAlready += already
 			fmt.Printf("%s skill %q\n", style.OK("loaded"), id)
 		}
@@ -101,29 +112,41 @@ var loadCmd = &cobra.Command{
 		if err := mgr.Save(st); err != nil {
 			return err
 		}
-		fmt.Printf("\n%s %d new skill(s)  %s %d already loaded\n",
-			style.OK("done:"), totalLoaded, style.Faint("+"), totalAlready)
+		if totalReloaded > 0 {
+			fmt.Printf("\n%s %d new  %s %d reloaded\n",
+				style.OK("done:"), totalLoaded, style.Faint("↻"), totalReloaded)
+		} else {
+			fmt.Printf("\n%s %d new skill(s)  %s %d already loaded\n",
+				style.OK("done:"), totalLoaded, style.Faint("+"), totalAlready)
+		}
 		return nil
 	},
 }
 
-func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (loaded, already int, err error) {
+func applyLoadPlan(plan bundle.LoadPlan, st *state.State, force bool) (loaded, reloaded, already int, err error) {
 	var copied []string
 	for _, action := range plan.Actions {
-		if action.Already {
+		if action.Already && !force {
 			st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, plan.Bundle)
 			already++
 			continue
 		}
+		if action.Already {
+			_ = live.RemoveSkill(action.Skill.DirName)
+		}
 		if err := live.CopySkill(action.Skill.SrcPath, action.Skill.DirName); err != nil {
 			rollbackCopies(copied)
-			return 0, 0, err
+			return 0, 0, 0, err
 		}
 		copied = append(copied, action.Skill.DirName)
 		st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, plan.Bundle)
-		loaded++
+		if action.Already {
+			reloaded++
+		} else {
+			loaded++
+		}
 	}
-	return loaded, already, nil
+	return loaded, reloaded, already, nil
 }
 
 func rollbackCopies(dirs []string) {
