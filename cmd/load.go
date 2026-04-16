@@ -15,7 +15,6 @@ import (
 
 func init() {
 	loadCmd.Flags().StringSlice("skill", nil, "Load individual skill(s) directly (repeatable)")
-	loadCmd.Flags().BoolP("force", "f", false, "Re-copy skills already loaded (pick up library edits)")
 	rootCmd.AddCommand(loadCmd)
 }
 
@@ -24,9 +23,12 @@ var loadCmd = &cobra.Command{
 	Aliases:     []string{"l"},
 	Annotations: map[string]string{"group": "Load:"},
 	Short:       "Load bundles into ~/.skills/ (fzf when no args)",
+	Long: `Copy skills from the library into ~/.skills/. Always re-copies — if
+a skill is already loaded, it's replaced with the current library version.
+This means you can edit a skill in the library and just re-run load to
+pick up changes.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		individualSkills, _ := cmd.Flags().GetStringSlice("skill")
-		force, _ := cmd.Flags().GetBool("force")
 
 		bundles, err := library.Bundles()
 		if err != nil {
@@ -59,7 +61,7 @@ var loadCmd = &cobra.Command{
 			return err
 		}
 
-		totalLoaded, totalReloaded, totalAlready := 0, 0, 0
+		totalNew, totalReloaded := 0, 0
 
 		for _, name := range chosen {
 			skills, ok := bundles[name]
@@ -70,23 +72,21 @@ var loadCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			loaded, reloaded, already, err := applyLoadPlan(plan, st, force)
+			newCount, reloaded, err := applyLoadPlan(plan, st)
 			if err != nil {
 				return fmt.Errorf("loading bundle %q: %w", name, err)
 			}
-			totalLoaded += loaded
+			totalNew += newCount
 			totalReloaded += reloaded
-			totalAlready += already
-			if force && reloaded > 0 {
+			if reloaded > 0 {
 				fmt.Printf("%s bundle %q  %s %d new  %s %d reloaded\n",
 					style.OK("loaded"), name,
-					style.Faint("+"), loaded,
+					style.Faint("+"), newCount,
 					style.Faint("↻"), reloaded)
 			} else {
-				fmt.Printf("%s bundle %q  %s %d new  %s %d already loaded\n",
+				fmt.Printf("%s bundle %q  %s %d skill(s)\n",
 					style.OK("loaded"), name,
-					style.Faint("+"), loaded,
-					style.Faint("="), already)
+					style.Faint("+"), newCount)
 			}
 		}
 
@@ -99,54 +99,47 @@ var loadCmd = &cobra.Command{
 				Bundle:  "__skill__",
 				Actions: []bundle.LoadAction{{Skill: *s, Already: stateHas(st, id)}},
 			}
-			loaded, reloaded, already, err := applyLoadPlan(synthetic, st, force)
+			newCount, reloaded, err := applyLoadPlan(synthetic, st)
 			if err != nil {
 				return fmt.Errorf("loading skill %q: %w", id, err)
 			}
-			totalLoaded += loaded
+			totalNew += newCount
 			totalReloaded += reloaded
-			totalAlready += already
 			fmt.Printf("%s skill %q\n", style.OK("loaded"), id)
 		}
 
 		if err := mgr.Save(st); err != nil {
 			return err
 		}
+		total := totalNew + totalReloaded
+		fmt.Printf("\n%s %d skill(s)", style.OK("done:"), total)
 		if totalReloaded > 0 {
-			fmt.Printf("\n%s %d new  %s %d reloaded\n",
-				style.OK("done:"), totalLoaded, style.Faint("↻"), totalReloaded)
-		} else {
-			fmt.Printf("\n%s %d new skill(s)  %s %d already loaded\n",
-				style.OK("done:"), totalLoaded, style.Faint("+"), totalAlready)
+			fmt.Printf("  %s %d reloaded", style.Faint("↻"), totalReloaded)
 		}
+		fmt.Println()
 		return nil
 	},
 }
 
-func applyLoadPlan(plan bundle.LoadPlan, st *state.State, force bool) (loaded, reloaded, already int, err error) {
+func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded int, err error) {
 	var copied []string
 	for _, action := range plan.Actions {
-		if action.Already && !force {
-			st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, plan.Bundle)
-			already++
-			continue
-		}
 		if action.Already {
 			_ = live.RemoveSkill(action.Skill.DirName)
 		}
 		if err := live.CopySkill(action.Skill.SrcPath, action.Skill.DirName); err != nil {
 			rollbackCopies(copied)
-			return 0, 0, 0, err
+			return 0, 0, err
 		}
 		copied = append(copied, action.Skill.DirName)
 		st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, plan.Bundle)
 		if action.Already {
 			reloaded++
 		} else {
-			loaded++
+			newCount++
 		}
 	}
-	return loaded, reloaded, already, nil
+	return newCount, reloaded, nil
 }
 
 func rollbackCopies(dirs []string) {

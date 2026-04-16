@@ -35,7 +35,7 @@ const boardHeader = `# skl board — edit and save to apply
 
 var boardCmd = &cobra.Command{
 	Use:         "board",
-	Aliases:     []string{"edit"},
+	Aliases:     []string{"b"},
 	Annotations: map[string]string{"group": "Interactive:"},
 	Short:       "Edit bundles in $EDITOR (vim-style grouping)",
 	RunE: func(cmd *cobra.Command, args []string) error {
