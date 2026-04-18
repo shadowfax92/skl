@@ -114,7 +114,7 @@ func printSkills(skills []library.Skill, bundles map[string][]string, st *state.
 		sort.Strings(bs)
 		bsStr := strings.Join(bs, ", ")
 		if bsStr == "" {
-			bsStr = style.Faint("(unbundled)")
+			bsStr = style.Faint(library.ReservedInboxBundle)
 		}
 		mark := style.Faint("—")
 		if _, ok := st.Loaded[s.ID]; ok {

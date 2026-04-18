@@ -22,6 +22,9 @@ var bundleCreateCmd = &cobra.Command{
 		yes, _ := cmd.Flags().GetBool("yes")
 		name := args[0]
 		skills := args[1:]
+		if err := rejectReservedBundle(name); err != nil {
+			return err
+		}
 
 		if err := validateSkillsExist(skills); err != nil {
 			return err
