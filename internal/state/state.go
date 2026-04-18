@@ -108,8 +108,12 @@ func (s *State) AddBundleClaim(skillID, dirName, src, bundle string) {
 		}
 		return
 	}
+	entry.DirName = dirName
+	entry.Source = src
+	entry.LoadedAt = time.Now().UTC()
 	for _, b := range entry.Bundles {
 		if b == bundle {
+			s.Loaded[skillID] = entry
 			return
 		}
 	}

@@ -19,6 +19,8 @@ type Skill struct {
 	Repo     string
 }
 
+const ReservedInboxBundle = "inbox"
+
 type bundleFile struct {
 	Bundles map[string][]string `yaml:"bundles"`
 }
@@ -148,6 +150,37 @@ func FindSkill(id string) (*Skill, error) {
 }
 
 func Bundles() (map[string][]string, error) {
+	bundles, err := readPersistedBundles()
+	if err != nil {
+		return nil, err
+	}
+	skills, err := Skills()
+	if err != nil {
+		return nil, err
+	}
+	assigned := make(map[string]bool, len(skills))
+	for name, ids := range bundles {
+		if name == ReservedInboxBundle {
+			continue
+		}
+		for _, id := range ids {
+			assigned[id] = true
+		}
+	}
+	var inbox []string
+	for _, skill := range skills {
+		if assigned[skill.ID] {
+			continue
+		}
+		inbox = append(inbox, skill.ID)
+	}
+	if len(inbox) > 0 {
+		bundles[ReservedInboxBundle] = inbox
+	}
+	return bundles, nil
+}
+
+func readPersistedBundles() (map[string][]string, error) {
 	path, err := BundlesPath()
 	if err != nil {
 		return nil, err
@@ -180,6 +213,9 @@ func WriteBundles(b map[string][]string) error {
 
 	cleaned := make(map[string][]string, len(b))
 	for name, skills := range b {
+		if name == ReservedInboxBundle {
+			continue
+		}
 		cleaned[name] = dedupSorted(skills)
 	}
 

@@ -38,7 +38,7 @@ Make sure `~/bin` is on your `PATH`.
 
 ```sh
 skl import                              # seed library from current ~/.skills/
-skl prune --untracked                   # wipe the old unbundled dregs
+skl prune --untracked                   # wipe the old uncategorized dregs
 skl board                               # drag skills into bundles in $EDITOR
 
 # or use CLI subcommands directly
@@ -147,7 +147,7 @@ Flags:
 - copy-editing
 - copywriting
 
-### (unbundled)
+### inbox
 - ai-seo
 - analytics-tracking
 - …
@@ -155,7 +155,7 @@ Flags:
 
 Move skill lines between sections to change bundle membership. Add new `### name` headings to create bundles. Delete a section to delete its bundle. A skill listed under two sections appears in both bundles.
 
-Save, and `skl` rewrites `bundles.yaml`. Quit without saving (e.g. `:cq` in vim) to abort. Skills in `### (unbundled)` stay in the library but belong to no bundle.
+Save, and `skl` rewrites `bundles.yaml`. Quit without saving (e.g. `:cq` in vim) to abort. Skills in `### inbox` are uncategorized; they stay in the library and the section is derived rather than persisted as a normal bundle.
 
 ## How it works
 

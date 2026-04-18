@@ -164,7 +164,7 @@ func pruneLabelFor(dir string, stateByDir map[string]string, st *state.State, sk
 	sort.Strings(memberships)
 	switch len(memberships) {
 	case 0:
-		return "untracked (no bundle)"
+		return "untracked (not in library)"
 	case 1:
 		return fmt.Sprintf("untracked (in bundle: %s)", memberships[0])
 	default:

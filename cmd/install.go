@@ -55,6 +55,11 @@ Flags:
 		subdir, _ := cmd.Flags().GetString("subdir")
 		prefix, _ := cmd.Flags().GetString("prefix")
 		force, _ := cmd.Flags().GetBool("force")
+		if bundleName != "" {
+			if err := rejectReservedBundle(bundleName); err != nil {
+				return err
+			}
+		}
 
 		src := args[0]
 		isLocal := looksLocal(src)

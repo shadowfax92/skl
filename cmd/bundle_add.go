@@ -21,6 +21,9 @@ var bundleAddCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		skills := args[1:]
+		if err := rejectReservedBundle(name); err != nil {
+			return err
+		}
 
 		bundles, err := library.Bundles()
 		if err != nil {

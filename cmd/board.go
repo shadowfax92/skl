@@ -17,8 +17,6 @@ func init() {
 	rootCmd.AddCommand(boardCmd)
 }
 
-const boardUnbundled = "(unbundled)"
-
 const boardHeader = `# skl board — edit and save to apply
 #
 # Each "### <name>" is a bundle. Skills go beneath as "- <skill-id>".
@@ -26,7 +24,7 @@ const boardHeader = `# skl board — edit and save to apply
 # Add a new bundle by adding a "### <name>" heading.
 # Delete a bundle by removing its entire section.
 # A skill can appear in multiple bundles (just list it under each).
-# Skills under "### (unbundled)" stay in the library but join no bundle.
+# Skills under "### inbox" are uncategorized and are not persisted as a normal bundle.
 # Lines starting with "#" or blank lines are ignored.
 # Quit without saving (e.g. ":cq" in vim) to abort all changes.
 #
@@ -71,7 +69,7 @@ var boardCmd = &cobra.Command{
 			return err
 		}
 
-		summary := diffBundles(oldBundles, newBundles)
+		summary := diffBundles(stripReservedBundles(oldBundles), newBundles)
 		if err := library.WriteBundles(newBundles); err != nil {
 			return err
 		}
@@ -93,7 +91,7 @@ func generateBoardMarkdown(skills []library.Skill, bundles map[string][]string) 
 
 	names := make([]string, 0, len(bundles))
 	for n := range bundles {
-		if n == boardUnbundled {
+		if n == library.ReservedInboxBundle {
 			continue
 		}
 		names = append(names, n)
@@ -119,7 +117,7 @@ func generateBoardMarkdown(skills []library.Skill, bundles map[string][]string) 
 		}
 	}
 	sort.Strings(unbundled)
-	b.WriteString("### " + boardUnbundled + "\n")
+	b.WriteString("### " + library.ReservedInboxBundle + "\n")
 	for _, id := range unbundled {
 		b.WriteString("- " + id + "\n")
 	}
@@ -136,7 +134,7 @@ func parseBoardMarkdown(content string) (map[string][]string, error) {
 		}
 		if strings.HasPrefix(trimmed, "### ") {
 			current = strings.TrimSpace(strings.TrimPrefix(trimmed, "### "))
-			if current != boardUnbundled {
+			if current != library.ReservedInboxBundle {
 				if _, ok := out[current]; !ok {
 					out[current] = []string{}
 				}
@@ -150,12 +148,23 @@ func parseBoardMarkdown(content string) (map[string][]string, error) {
 			continue
 		}
 		id := strings.TrimSpace(trimmed[1:])
-		if id == "" || current == "" || current == boardUnbundled {
+		if id == "" || current == "" || current == library.ReservedInboxBundle {
 			continue
 		}
 		out[current] = append(out[current], id)
 	}
 	return out, nil
+}
+
+func stripReservedBundles(bundles map[string][]string) map[string][]string {
+	out := make(map[string][]string, len(bundles))
+	for name, ids := range bundles {
+		if name == library.ReservedInboxBundle {
+			continue
+		}
+		out[name] = append([]string(nil), ids...)
+	}
+	return out
 }
 
 func validateBoardSkills(bundles map[string][]string, lib []library.Skill) error {
