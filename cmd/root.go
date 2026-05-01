@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"skl/internal/library"
 	"skl/internal/picker"
 	"skl/internal/style"
 
@@ -15,6 +16,8 @@ import (
 var Version = "dev"
 
 var ErrCancelled = errors.New("")
+
+var rootLLMTxt bool
 
 func helpHeader(s string) string { return style.Header(s) }
 func helpCmdCol(s string) string { return style.Cmd(s) }
@@ -99,6 +102,14 @@ Try:
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if rootLLMTxt {
+			out, err := llmTxt()
+			if err != nil {
+				return err
+			}
+			fmt.Fprint(cmd.OutOrStdout(), out)
+			return nil
+		}
 		return cmd.Help()
 	},
 }
@@ -110,6 +121,49 @@ func init() {
 	cobra.AddTemplateFunc("helpHint", helpHint)
 	cobra.AddTemplateFunc("groupedHelp", groupedHelp)
 	rootCmd.SetUsageTemplate(usageTemplate)
+	rootCmd.Flags().BoolVar(&rootLLMTxt, "llm-txt", false, "Print simple instructions for coding agents")
+}
+
+// llmTxt prints a compact, machine-friendly guide to the skl library layout.
+// It uses the resolved library path so an agent can operate on the right
+// directory without guessing where the user's skills live.
+func llmTxt() (string, error) {
+	lib, err := library.LibraryPath()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`SKL LLM GUIDE
+
+Library: %s
+Live skills dir: ~/.skills
+
+How skl works:
+- The library is the source of truth.
+- skl load <bundle> copies skill folders from the library into ~/.skills.
+- skl unload <bundle> removes skills that no loaded bundle still claims.
+
+How to organize skills:
+- Folder bundles live directly under the library.
+- A skill is any directory containing SKILL.md.
+- Put bundled skills at <bundle>/<skill>/SKILL.md.
+- Example: dev/cso/SKILL.md is loaded by: skl load dev
+- legacy unbundled skills live at skills/<skill>/SKILL.md.
+
+External repos:
+- Put third-party repos under external/<repo>/.
+- Put or keep skills at external/<repo>/<skill>/SKILL.md.
+- Example: external/gstack/agent/SKILL.md is loaded by: skl load external/gstack
+- Nested .git directories are intentionally ignored by skl sync.
+- To update an external repo, run git commands inside external/<repo>/.
+
+Useful commands:
+- skl ls                  list folder bundles
+- skl ls --skills         list every skill ID
+- skl load <bundle>       load a folder bundle
+- skl unload <bundle>     unload a folder bundle
+- skl status              show loaded skills
+- skl config              show paths
+`, lib), nil
 }
 
 func Execute() {
