@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"skl/internal/library"
 	"skl/internal/style"
@@ -10,50 +11,37 @@ import (
 )
 
 func init() {
-	bundleCreateCmd.Flags().BoolP("yes", "y", false, "Skip overwrite confirmation")
 	bundleCmd.AddCommand(bundleCreateCmd)
 }
 
 var bundleCreateCmd = &cobra.Command{
-	Use:   "create <name> <skill...>",
-	Short: "Create or replace a bundle with the given skills",
-	Args:  cobra.MinimumNArgs(2),
+	Use:   "create <name>",
+	Short: "Create a folder bundle",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		yes, _ := cmd.Flags().GetBool("yes")
 		name := args[0]
-		skills := args[1:]
 		if err := rejectReservedBundle(name); err != nil {
 			return err
 		}
 
-		if err := validateSkillsExist(skills); err != nil {
-			return err
-		}
-
-		bundles, err := library.Bundles()
+		path, err := library.BundlePath(name)
 		if err != nil {
 			return err
 		}
-		if _, exists := bundles[name]; exists && !yes {
-			if !confirm(fmt.Sprintf("Bundle %q exists. Replace?", name)) {
-				return ErrCancelled
+		if info, err := os.Stat(path); err == nil {
+			if !info.IsDir() {
+				return fmt.Errorf("%s exists and is not a directory", path)
 			}
-		}
-
-		bundles[name] = skills
-		if err := library.WriteBundles(bundles); err != nil {
+			fmt.Printf("%s bundle %q\n", style.Faint("exists"), name)
+			return nil
+		} else if !os.IsNotExist(err) {
 			return err
 		}
-		fmt.Printf("%s bundle %q with %d skill(s)\n", style.OK("created"), name, len(skills))
+
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return fmt.Errorf("creating bundle %q: %w", name, err)
+		}
+		fmt.Printf("%s bundle %q\n", style.OK("created"), name)
 		return nil
 	},
-}
-
-func validateSkillsExist(ids []string) error {
-	for _, id := range ids {
-		if _, err := library.FindSkill(id); err != nil {
-			return err
-		}
-	}
-	return nil
 }

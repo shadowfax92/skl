@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -41,8 +42,8 @@ func SetRemote(dir, url string) error {
 	return run(dir, "remote", "add", "origin", url)
 }
 
-func HasStagedOrUnstagedChanges(dir string) (bool, error) {
-	out, err := output(dir, "status", "--porcelain")
+func HasStagedChanges(dir string) (bool, error) {
+	out, err := output(dir, "diff", "--cached", "--name-only")
 	if err != nil {
 		return false, err
 	}
@@ -50,10 +51,14 @@ func HasStagedOrUnstagedChanges(dir string) (bool, error) {
 }
 
 func AddCommit(dir, msg string) error {
-	if err := run(dir, "add", "-A"); err != nil {
+	nestedRepos, err := nestedRepoPaths(dir)
+	if err != nil {
 		return err
 	}
-	dirty, err := HasStagedOrUnstagedChanges(dir)
+	if err := run(dir, gitAddArgs(nestedRepos)...); err != nil {
+		return err
+	}
+	dirty, err := HasStagedChanges(dir)
 	if err != nil {
 		return err
 	}
@@ -61,6 +66,41 @@ func AddCommit(dir, msg string) error {
 		return nil
 	}
 	return run(dir, "commit", "-m", msg)
+}
+
+func gitAddArgs(excludePaths []string) []string {
+	args := []string{"add", "-A", "--", "."}
+	for _, p := range excludePaths {
+		args = append(args, ":(exclude)"+filepath.ToSlash(p))
+	}
+	return args
+}
+
+func nestedRepoPaths(root string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || path == root || d.Name() != ".git" {
+			return nil
+		}
+		parent := filepath.Dir(path)
+		if parent == root {
+			return filepath.SkipDir
+		}
+		rel, err := filepath.Rel(root, parent)
+		if err != nil {
+			return err
+		}
+		out = append(out, rel)
+		return filepath.SkipDir
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func PullRebase(dir string) error {

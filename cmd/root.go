@@ -16,9 +16,9 @@ var Version = "dev"
 
 var ErrCancelled = errors.New("")
 
-func helpHeader(s string) string  { return style.Header(s) }
-func helpCmdCol(s string) string  { return style.Cmd(s) }
-func helpHint(s string) string    { return style.Hint(s) }
+func helpHeader(s string) string { return style.Header(s) }
+func helpCmdCol(s string) string { return style.Cmd(s) }
+func helpHint(s string) string   { return style.Hint(s) }
 func helpAliases(a []string) string {
 	if len(a) == 0 {
 		return ""
@@ -88,19 +88,13 @@ const usageTemplate = `{{helpHeader "Usage:"}}{{if .Runnable}}
 
 var rootCmd = &cobra.Command{
 	Use:   "skl",
-	Short: "Manage Claude Code skills as named bundles",
-	Long: `skl manages your ~/.skills/ directory by loading and unloading curated
-bundles of skills from a source library at ~/.config/skl/library/.
+	Short: "Manage Claude Code skills as folder bundles",
+	Long: `Folder-based skill loadouts for ~/.skills/.
 
-Quick start:
-  skl import              # seed library from current ~/.skills/
-  skl board               # vim-style: drag skills between bundles in $EDITOR
-  skl load dev            # copies dev's skills into ~/.skills/
-  skl unload              # fzf-pick a loaded bundle to remove
-  skl prune               # fzf-pick individual skills to wipe from ~/.skills/
-  skl ls                  # show all bundles
-  skl status              # show what's loaded right now
-  skl sync                # git-sync the library`,
+Try:
+  skl ls
+  skl load <bundle>
+  skl status`,
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,

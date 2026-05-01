@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`skl` is a Go CLI that manages the user's Claude Code skills directory (`~/.skills/`) as named bundles. Skills are stored canonically in `~/.config/skl/library/` and copied into `~/.skills/` on `skl load <bundle>`. Removed on `skl unload`.
+`skl` is a Go CLI that manages the user's Claude Code skills directory (`~/.skills/`) as folder bundles. Skills are stored canonically in `~/.config/skl/library/` and copied into `~/.skills/` on `skl load <bundle>`. Removed on `skl unload`.
 
 ## Build & Run
 
@@ -21,7 +21,7 @@ Module name is `skl` (plain, not URL).
 
 **Internal packages** (`internal/`):
 - `config/` — YAML config at `~/.config/skl/config.yaml`. Auto-creates with header on first read.
-- `library/` — Source-of-truth filesystem at `~/.config/skl/library/`. Reads `skills/`, `external/<repo>/`, `bundles.yaml`. Atomic writes via tmp+rename.
+- `library/` — Source-of-truth filesystem at `~/.config/skl/library/`. Discovers folder bundles by walking skill directories. `skills/<skill>` is legacy unbundled storage; `external/<repo>/<skill>` is a namespaced external bundle.
 - `live/` — `~/.skills/` filesystem. `CopySkill` (recursive copy with rollback), `RemoveSkill` (refuses dot names), `LoadedDirs`. Always skips dot-prefixed entries.
 - `state/` — JSON state at `~/.local/state/skl/state.json`. Flock-locked via `syscall.Flock()` (grove pattern). Tracks per-skill bundle claims for reference-counted unload.
 - `bundle/` — Pure functions: `PlanLoad`, `PlanUnload`. No I/O. Resolves which skills to copy/skip and which to remove vs keep on unload.
@@ -29,16 +29,16 @@ Module name is `skl` (plain, not URL).
 - `gitlib/` — Thin shell-out to git for sync (`init`, `add`/`commit`, `pull --rebase`, `push`, `clone`).
 - `style/` — Shared lipgloss colors and helpers.
 
-**Data flow**: library = source of truth → `skl load <bundle>` reads `bundles.yaml`, copies skill trees into `~/.skills/`, records each (skill, bundle) claim in state. `skl unload <bundle>` reads state, decrements bundle claims; only removes a skill from disk when no claim remains.
+**Data flow**: library = source of truth → `skl load <bundle>` resolves the bundle folder's direct skills, copies skill trees into `~/.skills/`, records each (skill, bundle) claim in state. `skl unload <bundle>` reads state, decrements bundle claims; only removes a skill from disk when no claim remains.
 
 ## Key Invariants
 
 - **Never touch dot-prefixed entries in `~/.skills/`** — `live.guardDirName` enforces.
 - **State mutations require `mgr.Lock()` / `defer mgr.Unlock()`** — same flock pattern as grove.
-- **Atomic writes everywhere** — tmp + rename for `state.json`, `bundles.yaml`, `config.yaml`.
+- **Atomic writes everywhere** — tmp + rename for `state.json`, legacy `bundles.yaml`, `config.yaml`.
 - **Per-bundle atomicity on load** — failure mid-bundle rolls back that bundle's copies; other bundles unaffected.
 - **Reference-counted unload** — a skill held by N bundles is only removed when the Nth bundle is unloaded.
-- **External skills are namespaced** — `external/<repo>/<skill>` → ID `<repo>/<skill>` to avoid collisions with `library/skills/<skill>`.
+- **External skills are namespaced** — `external/<repo>/<skill>` → ID `external/<repo>/<skill>` to avoid collisions with local bundle paths.
 
 ## Two helpers worth flagging
 

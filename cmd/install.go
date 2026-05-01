@@ -15,10 +15,10 @@ import (
 )
 
 func init() {
-	installCmd.Flags().String("bundle", "", "Add imported skills to this bundle (creates if absent)")
+	installCmd.Flags().String("bundle", "", "Deprecated; folder bundles are created by directory placement")
 	installCmd.Flags().String("name", "", "Override namespace name (namespaced mode only)")
 	installCmd.Flags().String("subdir", "", "Scan this subdirectory of the source (e.g., 'skills')")
-	installCmd.Flags().String("prefix", "", "Install flat as library/skills/<prefix>-<skill>/ (instead of namespaced library/external/<ns>/<skill>/)")
+	installCmd.Flags().String("prefix", "", "Install flat as library/skills/<prefix>-<skill>/ (instead of library/external/<ns>/<skill>/)")
 	installCmd.Flags().Bool("force", false, "Overwrite existing skills / namespaces")
 	rootCmd.AddCommand(installCmd)
 }
@@ -33,19 +33,18 @@ Two install modes:
 
   Namespaced (default)
       skl install https://github.com/obra/superpowers --subdir skills
-      → clones to library/external/superpowers/, skills referenced as
-        superpowers/<skill> in bundles.yaml.
+      → copies skills to library/external/superpowers/<skill>/.
 
   Flat with prefix
-      skl install /path/to/repo --subdir skills --prefix supa --bundle sp
+      skl install /path/to/repo --subdir skills --prefix supa
       → copies each skill into library/skills/supa-<skill>/, so they appear
-        as native skills. Bundle 'sp' lists them as 'supa-<skill>'.
+        as unbundled legacy skills.
 
 Flags:
   --subdir <path>   Scan a subdirectory of the source for skills (many repos
                     nest skills under 'skills/').
   --prefix <name>   Flatten into library/skills/ with <prefix>- on each name.
-  --bundle <name>   Add all imported skills to this bundle.
+  --bundle <name>   Deprecated. Move skill folders to bundle directories instead.
   --name <name>     Override the namespace dir name (no effect with --prefix).
   --force           Overwrite an existing namespace or prefixed skill.`,
 	Args: cobra.ExactArgs(1),
@@ -56,9 +55,7 @@ Flags:
 		prefix, _ := cmd.Flags().GetString("prefix")
 		force, _ := cmd.Flags().GetBool("force")
 		if bundleName != "" {
-			if err := rejectReservedBundle(bundleName); err != nil {
-				return err
-			}
+			return fmt.Errorf("--bundle is deprecated; folder bundles are created by moving skill directories")
 		}
 
 		src := args[0]
@@ -101,19 +98,6 @@ Flags:
 			fmt.Printf("  %s\n", id)
 		}
 
-		if bundleName != "" && len(added) > 0 {
-			bundles, err := library.Bundles()
-			if err != nil {
-				return err
-			}
-			merged := append([]string{}, bundles[bundleName]...)
-			merged = append(merged, added...)
-			bundles[bundleName] = merged
-			if err := library.WriteBundles(bundles); err != nil {
-				return err
-			}
-			fmt.Printf("%s skills to bundle %q\n", style.OK("added"), bundleName)
-		}
 		return nil
 	},
 }
@@ -208,7 +192,7 @@ func installNamespaced(skillSrcs []string, nsFromClone string, isLocal bool, src
 	if nsFromClone != "" {
 		var added []string
 		for _, sd := range skillSrcs {
-			added = append(added, nsFromClone+"/"+filepath.Base(sd))
+			added = append(added, "external/"+nsFromClone+"/"+filepath.Base(sd))
 		}
 		return added, nil
 	}
@@ -253,7 +237,7 @@ func installNamespaced(skillSrcs []string, nsFromClone string, isLocal bool, src
 		if err := copyDir(sd, dst); err != nil {
 			return nil, fmt.Errorf("copying %s: %w", name, err)
 		}
-		added = append(added, ns+"/"+name)
+		added = append(added, "external/"+ns+"/"+name)
 	}
 	return added, nil
 }

@@ -6,7 +6,7 @@ var bundleCmd = &cobra.Command{
 	Use:         "bundle",
 	Aliases:     []string{"b"},
 	Annotations: map[string]string{"group": "Library:"},
-	Short:       "Create, edit, or delete bundles",
+	Short:       "Manage folder bundles",
 }
 
 func init() {

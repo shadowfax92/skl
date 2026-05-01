@@ -57,6 +57,20 @@ func BundlesPath() (string, error) {
 	return filepath.Join(root, "bundles.yaml"), nil
 }
 
+// BundlePath resolves a folder bundle name inside the library root.
+// Bundle names are slash-separated relative paths so commands cannot escape
+// the library with absolute paths or ".." traversal.
+func BundlePath(name string) (string, error) {
+	root, err := LibraryPath()
+	if err != nil {
+		return "", err
+	}
+	if err := validateRelativeName(name); err != nil {
+		return "", err
+	}
+	return filepath.Join(root, filepath.FromSlash(name)), nil
+}
+
 func EnsureLibrary() error {
 	skills, err := SkillsPath()
 	if err != nil {
@@ -80,56 +94,38 @@ func Skills() ([]Skill, error) {
 	}
 	var out []Skill
 
-	skillsRoot, _ := SkillsPath()
-	entries, err := os.ReadDir(skillsRoot)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		dir := filepath.Join(skillsRoot, e.Name())
-		if !hasSkillManifest(dir) {
-			continue
-		}
-		out = append(out, Skill{
-			ID:      e.Name(),
-			DirName: e.Name(),
-			SrcPath: dir,
-		})
-	}
-
-	externalRoot, _ := ExternalPath()
-	repoEntries, err := os.ReadDir(externalRoot)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	for _, repo := range repoEntries {
-		if !repo.IsDir() || strings.HasPrefix(repo.Name(), ".") {
-			continue
-		}
-		repoDir := filepath.Join(externalRoot, repo.Name())
-		skillEntries, err := os.ReadDir(repoDir)
+	root, _ := LibraryPath()
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			continue
+			return err
 		}
-		for _, s := range skillEntries {
-			if !s.IsDir() || strings.HasPrefix(s.Name(), ".") {
-				continue
-			}
-			dir := filepath.Join(repoDir, s.Name())
-			if !hasSkillManifest(dir) {
-				continue
-			}
-			out = append(out, Skill{
-				ID:       repo.Name() + "/" + s.Name(),
-				DirName:  s.Name(),
-				SrcPath:  dir,
-				External: true,
-				Repo:     repo.Name(),
-			})
+		if !d.IsDir() {
+			return nil
 		}
+		if path != root && shouldSkipDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		if path == root || !hasSkillManifest(path) {
+			return nil
+		}
+
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		id := filepath.ToSlash(rel)
+		id = legacySkillID(id)
+		out = append(out, Skill{
+			ID:       id,
+			DirName:  filepath.Base(path),
+			SrcPath:  path,
+			External: strings.HasPrefix(id, "external/"),
+			Repo:     repoNameFromSkillID(id),
+		})
+		return filepath.SkipDir
+	})
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -150,32 +146,26 @@ func FindSkill(id string) (*Skill, error) {
 }
 
 func Bundles() (map[string][]string, error) {
-	bundles, err := readPersistedBundles()
-	if err != nil {
-		return nil, err
-	}
 	skills, err := Skills()
 	if err != nil {
 		return nil, err
 	}
-	assigned := make(map[string]bool, len(skills))
-	for name, ids := range bundles {
-		if name == ReservedInboxBundle {
-			continue
-		}
-		for _, id := range ids {
-			assigned[id] = true
-		}
-	}
+
+	bundles := make(map[string][]string)
 	var inbox []string
 	for _, skill := range skills {
-		if assigned[skill.ID] {
+		parent := pathDir(skill.ID)
+		if parent == "" {
+			inbox = append(inbox, skill.ID)
 			continue
 		}
-		inbox = append(inbox, skill.ID)
+		bundles[parent] = append(bundles[parent], skill.ID)
 	}
 	if len(inbox) > 0 {
 		bundles[ReservedInboxBundle] = inbox
+	}
+	for name := range bundles {
+		sort.Strings(bundles[name])
 	}
 	return bundles, nil
 }
@@ -235,6 +225,47 @@ func WriteBundles(b map[string][]string) error {
 func hasSkillManifest(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
 	return err == nil
+}
+
+func shouldSkipDir(name string) bool {
+	return strings.HasPrefix(name, ".")
+}
+
+func legacySkillID(id string) string {
+	if rest, ok := strings.CutPrefix(id, "skills/"); ok {
+		return rest
+	}
+	return id
+}
+
+func validateRelativeName(name string) error {
+	if name == "" || name == "." {
+		return fmt.Errorf("bundle name cannot be empty")
+	}
+	if filepath.IsAbs(name) {
+		return fmt.Errorf("bundle name %q must be relative", name)
+	}
+	clean := filepath.Clean(filepath.FromSlash(name))
+	if clean == "." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == ".." {
+		return fmt.Errorf("bundle name %q escapes the library", name)
+	}
+	return nil
+}
+
+func repoNameFromSkillID(id string) string {
+	parts := strings.Split(id, "/")
+	if len(parts) >= 2 && parts[0] == "external" {
+		return parts[1]
+	}
+	return ""
+}
+
+func pathDir(id string) string {
+	parent := filepath.ToSlash(filepath.Dir(filepath.FromSlash(id)))
+	if parent == "." {
+		return ""
+	}
+	return parent
 }
 
 func dedupSorted(in []string) []string {

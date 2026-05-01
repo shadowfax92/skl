@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"skl/internal/library"
 	"skl/internal/style"
@@ -25,21 +26,27 @@ var bundleRmCmd = &cobra.Command{
 			return err
 		}
 
-		bundles, err := library.Bundles()
+		path, err := library.BundlePath(name)
 		if err != nil {
 			return err
 		}
-		if _, ok := bundles[name]; !ok {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
 			return fmt.Errorf("bundle %q does not exist", name)
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("%s is not a directory", path)
 		}
 
 		if !yes && !confirm(fmt.Sprintf("Delete bundle %q?", name)) {
 			return ErrCancelled
 		}
 
-		delete(bundles, name)
-		if err := library.WriteBundles(bundles); err != nil {
-			return err
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("removing empty bundle folder %q: %w", name, err)
 		}
 		fmt.Printf("%s bundle %q\n", style.OK("deleted"), name)
 		return nil

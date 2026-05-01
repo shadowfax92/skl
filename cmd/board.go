@@ -35,47 +35,51 @@ var boardCmd = &cobra.Command{
 	Use:         "board",
 	Aliases:     []string{"b"},
 	Annotations: map[string]string{"group": "Interactive:"},
-	Short:       "Edit bundles in $EDITOR (vim-style grouping)",
+	Short:       "Edit legacy YAML bundles",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		skills, err := library.Skills()
-		if err != nil {
-			return err
-		}
-		if len(skills) == 0 {
-			fmt.Println(style.Faint(`No skills in library. Run "skl import" first.`))
-			return nil
-		}
-
-		oldBundles, err := library.Bundles()
-		if err != nil {
-			return err
-		}
-
-		original := generateBoardMarkdown(skills, oldBundles)
-		edited, err := openInEditor("skl-board", original)
-		if err != nil {
-			return err
-		}
-		if edited == original {
-			fmt.Println(style.Faint("No changes."))
-			return nil
-		}
-
-		newBundles, err := parseBoardMarkdown(edited)
-		if err != nil {
-			return err
-		}
-		if err := validateBoardSkills(newBundles, skills); err != nil {
-			return err
-		}
-
-		summary := diffBundles(stripReservedBundles(oldBundles), newBundles)
-		if err := library.WriteBundles(newBundles); err != nil {
-			return err
-		}
-		printBoardSummary(summary)
-		return nil
+		return fmt.Errorf("board edits legacy YAML bundles; folder bundles are managed by moving skill directories")
 	},
+}
+
+func runLegacyBoard() error {
+	skills, err := library.Skills()
+	if err != nil {
+		return err
+	}
+	if len(skills) == 0 {
+		fmt.Println(style.Faint(`No skills in library. Run "skl import" first.`))
+		return nil
+	}
+
+	oldBundles, err := library.Bundles()
+	if err != nil {
+		return err
+	}
+
+	original := generateBoardMarkdown(skills, oldBundles)
+	edited, err := openInEditor("skl-board", original)
+	if err != nil {
+		return err
+	}
+	if edited == original {
+		fmt.Println(style.Faint("No changes."))
+		return nil
+	}
+
+	newBundles, err := parseBoardMarkdown(edited)
+	if err != nil {
+		return err
+	}
+	if err := validateBoardSkills(newBundles, skills); err != nil {
+		return err
+	}
+
+	summary := diffBundles(stripReservedBundles(oldBundles), newBundles)
+	if err := library.WriteBundles(newBundles); err != nil {
+		return err
+	}
+	printBoardSummary(summary)
+	return nil
 }
 
 type boardSummary struct {
