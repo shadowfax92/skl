@@ -84,6 +84,27 @@ func TestWriteBundlesStillStripsInboxForLegacyCommands(t *testing.T) {
 	}
 }
 
+func TestEnsureLibraryCreatesExternalReadme(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if err := EnsureLibrary(); err != nil {
+		t.Fatalf("EnsureLibrary: %v", err)
+	}
+
+	external, err := ExternalPath()
+	if err != nil {
+		t.Fatalf("ExternalPath: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(external, "README.md"))
+	if err != nil {
+		t.Fatalf("ReadFile(external README): %v", err)
+	}
+	if !strings.Contains(string(data), "External skill repositories") {
+		t.Fatalf("external README should explain the folder purpose:\n%s", data)
+	}
+}
+
 func TestSkillsIgnoreNestedGitInternals(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -25,6 +25,18 @@ type bundleFile struct {
 	Bundles map[string][]string `yaml:"bundles"`
 }
 
+const externalReadme = `# External skill repositories
+
+Put cloned or imported third-party skill repos here.
+
+Each direct child can be loaded as a folder bundle, for example:
+
+    skl load external/gstack
+
+Nested .git directories are ignored by skl sync. To update an external repo,
+run git commands inside that repo.
+`
+
 func LibraryPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -84,6 +96,9 @@ func EnsureLibrary() error {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return fmt.Errorf("creating %s: %w", d, err)
 		}
+	}
+	if err := ensureExternalReadme(external); err != nil {
+		return err
 	}
 	return nil
 }
@@ -225,6 +240,19 @@ func WriteBundles(b map[string][]string) error {
 func hasSkillManifest(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
 	return err == nil
+}
+
+func ensureExternalReadme(external string) error {
+	path := filepath.Join(external, "README.md")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(externalReadme), 0o644); err != nil {
+		return fmt.Errorf("writing external README: %w", err)
+	}
+	return nil
 }
 
 func shouldSkipDir(name string) bool {
