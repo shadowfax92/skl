@@ -10,7 +10,6 @@ import (
 	"skl/internal/bundle"
 	"skl/internal/library"
 	"skl/internal/live"
-	"skl/internal/picker"
 	"skl/internal/state"
 	"skl/internal/style"
 
@@ -302,25 +301,4 @@ func restoreLiveSkill(dirName, backupPath string) error {
 		return err
 	}
 	return os.Rename(backupPath, target)
-}
-
-func pickBundles(bundles map[string][]string, prompt string) ([]string, error) {
-	if len(bundles) == 0 {
-		return nil, fmt.Errorf("no bundles defined")
-	}
-	var items []picker.Item
-	for name, skills := range bundles {
-		items = append(items, picker.Item{
-			ID:      name,
-			Display: fmt.Sprintf("%s\t(%d skills)", name, len(skills)),
-		})
-	}
-	chosen, err := picker.Pick(items, picker.Opts{Prompt: prompt, Multi: true})
-	if err != nil {
-		return nil, err
-	}
-	if len(chosen) == 0 {
-		return nil, ErrCancelled
-	}
-	return chosen, nil
 }
