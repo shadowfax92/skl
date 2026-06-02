@@ -23,12 +23,6 @@ func TestFolderBundlesUseDirectoriesAsSourceOfTruth(t *testing.T) {
 	writeSkill(t, filepath.Join(root, "external", "gstack", "agent"))
 	writeSkill(t, filepath.Join(root, "loose"))
 
-	if err := WriteBundles(map[string][]string{
-		"ignored-yaml": {"loose"},
-	}); err != nil {
-		t.Fatalf("WriteBundles: %v", err)
-	}
-
 	skills, err := Skills()
 	if err != nil {
 		t.Fatalf("Skills: %v", err)
@@ -57,30 +51,6 @@ func TestFolderBundlesUseDirectoriesAsSourceOfTruth(t *testing.T) {
 	}
 	if !reflect.DeepEqual(bundles, want) {
 		t.Fatalf("Bundles mismatch\ngot:  %#v\nwant: %#v", bundles, want)
-	}
-}
-
-func TestWriteBundlesStillStripsInboxForLegacyCommands(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	if err := WriteBundles(map[string][]string{
-		"dev":               {"alpha"},
-		ReservedInboxBundle: {"beta"},
-	}); err != nil {
-		t.Fatalf("WriteBundles: %v", err)
-	}
-
-	bundlesPath, err := BundlesPath()
-	if err != nil {
-		t.Fatalf("BundlesPath: %v", err)
-	}
-	data, err := os.ReadFile(bundlesPath)
-	if err != nil {
-		t.Fatalf("ReadFile(%s): %v", bundlesPath, err)
-	}
-	if strings.Contains(string(data), ReservedInboxBundle+":") {
-		t.Fatalf("bundles.yaml should not persist %q:\n%s", ReservedInboxBundle, data)
 	}
 }
 

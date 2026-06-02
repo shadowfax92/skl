@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Skill struct {
@@ -20,10 +18,6 @@ type Skill struct {
 }
 
 const ReservedInboxBundle = "inbox"
-
-type bundleFile struct {
-	Bundles map[string][]string `yaml:"bundles"`
-}
 
 const externalReadme = `# External skill repositories
 
@@ -59,14 +53,6 @@ func ExternalPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(root, "external"), nil
-}
-
-func BundlesPath() (string, error) {
-	root, err := LibraryPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "bundles.yaml"), nil
 }
 
 // BundlePath resolves a folder bundle name inside the library root.
@@ -185,58 +171,6 @@ func Bundles() (map[string][]string, error) {
 	return bundles, nil
 }
 
-func readPersistedBundles() (map[string][]string, error) {
-	path, err := BundlesPath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return map[string][]string{}, nil
-		}
-		return nil, fmt.Errorf("reading bundles.yaml: %w", err)
-	}
-	var f bundleFile
-	if err := yaml.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parsing bundles.yaml: %w", err)
-	}
-	if f.Bundles == nil {
-		f.Bundles = map[string][]string{}
-	}
-	return f.Bundles, nil
-}
-
-func WriteBundles(b map[string][]string) error {
-	if err := EnsureLibrary(); err != nil {
-		return err
-	}
-	path, err := BundlesPath()
-	if err != nil {
-		return err
-	}
-
-	cleaned := make(map[string][]string, len(b))
-	for name, skills := range b {
-		if name == ReservedInboxBundle {
-			continue
-		}
-		cleaned[name] = dedupSorted(skills)
-	}
-
-	data, err := yaml.Marshal(bundleFile{Bundles: cleaned})
-	if err != nil {
-		return fmt.Errorf("marshaling bundles.yaml: %w", err)
-	}
-	header := "# skl bundles — edit by hand or via `skl bundle ...`\n\n"
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(header+string(data)), 0o644); err != nil {
-		return fmt.Errorf("writing bundles.yaml: %w", err)
-	}
-	return os.Rename(tmp, path)
-}
-
 func hasSkillManifest(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
 	return err == nil
@@ -294,18 +228,4 @@ func pathDir(id string) string {
 		return ""
 	}
 	return parent
-}
-
-func dedupSorted(in []string) []string {
-	seen := make(map[string]bool, len(in))
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if s == "" || seen[s] {
-			continue
-		}
-		seen[s] = true
-		out = append(out, s)
-	}
-	sort.Strings(out)
-	return out
 }

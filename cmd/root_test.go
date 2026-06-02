@@ -41,3 +41,9 @@ func TestLLMTxtExplainsLibraryLayout(t *testing.T) {
 		}
 	}
 }
+
+func TestRootDoesNotExposeLegacyBoardCommand(t *testing.T) {
+	if _, _, err := rootCmd.Find([]string{"board"}); err == nil {
+		t.Fatalf("root command should not expose legacy board command")
+	}
+}
