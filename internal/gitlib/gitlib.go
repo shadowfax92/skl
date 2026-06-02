@@ -50,12 +50,19 @@ func HasStagedChanges(dir string) (bool, error) {
 	return strings.TrimSpace(out) != "", nil
 }
 
+// AddCommit stages and commits library changes while keeping nested repos out.
+// Ignored nested repos are left to gitignore because Git errors when an ignored
+// directory is also named as an explicit exclude pathspec.
 func AddCommit(dir, msg string) error {
 	nestedRepos, err := nestedRepoPaths(dir)
 	if err != nil {
 		return err
 	}
-	if err := run(dir, gitAddArgs(nestedRepos)...); err != nil {
+	excludePaths, err := unignoredPaths(dir, nestedRepos)
+	if err != nil {
+		return err
+	}
+	if err := run(dir, gitAddArgs(excludePaths)...); err != nil {
 		return err
 	}
 	dirty, err := HasStagedChanges(dir)
@@ -66,6 +73,36 @@ func AddCommit(dir, msg string) error {
 		return nil
 	}
 	return run(dir, "commit", "-m", msg)
+}
+
+// unignoredPaths returns paths that need explicit pathspec exclusion from add.
+// Ignored paths are already skipped by `git add -A -- .`.
+func unignoredPaths(dir string, paths []string) ([]string, error) {
+	var out []string
+	for _, p := range paths {
+		ignored, err := isIgnored(dir, p)
+		if err != nil {
+			return nil, err
+		}
+		if !ignored {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+func isIgnored(dir, path string) (bool, error) {
+	cmd := exec.Command("git", "check-ignore", "-q", "--", filepath.ToSlash(path))
+	cmd.Dir = dir
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
 }
 
 func gitAddArgs(excludePaths []string) []string {
