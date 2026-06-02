@@ -106,15 +106,17 @@ func Skills() ([]Skill, error) {
 		if path != root && shouldSkipDir(d.Name()) {
 			return filepath.SkipDir
 		}
-		if path == root || !hasSkillManifest(path) {
+		if path == root {
 			return nil
 		}
-
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
 		id := filepath.ToSlash(rel)
+		if isExternalRepoRoot(id) || !hasSkillManifest(path) {
+			return nil
+		}
 		id = legacySkillID(id)
 		out = append(out, Skill{
 			ID:       id,
@@ -191,6 +193,12 @@ func ensureExternalReadme(external string) error {
 
 func shouldSkipDir(name string) bool {
 	return strings.HasPrefix(name, ".")
+}
+
+// isExternalRepoRoot treats external/<repo> as a namespace, not a skill.
+func isExternalRepoRoot(id string) bool {
+	parts := strings.Split(id, "/")
+	return len(parts) == 2 && parts[0] == "external"
 }
 
 func legacySkillID(id string) string {

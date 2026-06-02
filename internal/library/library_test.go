@@ -20,6 +20,7 @@ func TestFolderBundlesUseDirectoriesAsSourceOfTruth(t *testing.T) {
 	writeSkill(t, filepath.Join(root, "gstack", "alpha"))
 	writeSkill(t, filepath.Join(root, "gstack", "beta"))
 	writeSkill(t, filepath.Join(root, "gstack", "oh", "deploy"))
+	writeSkill(t, filepath.Join(root, "external", "gstack"))
 	writeSkill(t, filepath.Join(root, "external", "gstack", "agent"))
 	writeSkill(t, filepath.Join(root, "loose"))
 
