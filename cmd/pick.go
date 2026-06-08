@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"skl/internal/bundle"
 	"skl/internal/library"
@@ -217,21 +218,15 @@ func resolveBundleSkillArg(bundleName, arg string, bundleSkills []string, byID m
 	localMatches := matchingBundleSkills(bundleSkills, byID, func(skill library.Skill) bool {
 		return localSkillName(skill) == arg
 	})
-	if len(localMatches) == 1 {
-		return localMatches[0], nil
-	}
-	if len(localMatches) > 1 {
-		return "", ambiguousBundleSkillError(bundleName, arg, localMatches)
-	}
-
 	nameMatches := matchingBundleSkills(bundleSkills, byID, func(skill library.Skill) bool {
 		return skill.Name != "" && skill.Name == arg
 	})
-	if len(nameMatches) == 1 {
-		return nameMatches[0], nil
+	matches := uniqueSortedIDs(append(localMatches, nameMatches...))
+	if len(matches) == 1 {
+		return matches[0], nil
 	}
-	if len(nameMatches) > 1 {
-		return "", ambiguousBundleSkillError(bundleName, arg, nameMatches)
+	if len(matches) > 1 {
+		return "", ambiguousBundleSkillError(bundleName, arg, matches)
 	}
 
 	return "", fmt.Errorf("skill %q not found in bundle %q", arg, bundleName)
@@ -313,5 +308,27 @@ func validatePickedBundleSkillIDs(bundleName string, chosen []string, members ma
 }
 
 func singleLinePickerText(text string) string {
-	return strings.Join(strings.Fields(text), " ")
+	var b strings.Builder
+	for _, r := range text {
+		if unicode.IsControl(r) {
+			b.WriteRune(' ')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func uniqueSortedIDs(ids []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

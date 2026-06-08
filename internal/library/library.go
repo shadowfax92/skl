@@ -205,7 +205,8 @@ func manifestSkillName(dir string) string {
 	if err != nil {
 		return ""
 	}
-	body := string(data)
+	body := strings.ReplaceAll(string(data), "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
 	if !strings.HasPrefix(body, "---\n") {
 		return ""
 	}

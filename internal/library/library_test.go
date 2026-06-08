@@ -153,6 +153,27 @@ func TestSkillsParseManifestNames(t *testing.T) {
 	}
 }
 
+func TestSkillsParseCRLFManifestNames(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillManifest(t, filepath.Join(root, "dev", "alpha"), "---\r\nname: Alpha Skill\r\ndescription: test\r\n---\r\n# body\r\n")
+
+	skills, err := Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	got := skillNames(skills)
+	want := map[string]string{"dev/alpha": "Alpha Skill"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skill names mismatch\ngot:  %#v\nwant: %#v", got, want)
+	}
+}
+
 func TestSkillsIgnoreSymlinkSkillManifest(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

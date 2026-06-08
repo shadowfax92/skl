@@ -100,6 +100,23 @@ func TestResolveBundleSkillArgsRejectsAmbiguousManifestName(t *testing.T) {
 	}
 }
 
+func TestResolveBundleSkillArgsRejectsLocalAndManifestNameCollision(t *testing.T) {
+	skills := []library.Skill{
+		{ID: "dev/build", DirName: "build", Name: "Build Tool"},
+		{ID: "dev/test", DirName: "test", Name: "build"},
+	}
+
+	_, err := resolveBundleSkillArgs("dev", []string{"dev/build", "dev/test"}, skills, []string{"build"})
+	if err == nil {
+		t.Fatalf("resolveBundleSkillArgs should reject local/name collisions")
+	}
+	for _, want := range []string{"ambiguous", "dev/build", "dev/test"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+}
+
 func TestResolveBundleSkillArgsRejectsMissingSkill(t *testing.T) {
 	skills := []library.Skill{{ID: "dev/alpha", Name: "Alpha"}}
 
@@ -167,7 +184,7 @@ func TestPickBundleSkillIDsRejectsOutOfBundlePickerResult(t *testing.T) {
 
 func TestPickBundleSkillIDsSanitizesDisplayNames(t *testing.T) {
 	skills := []library.Skill{
-		{ID: "dev/alpha", Name: "Alpha\nother/beta\tInjected"},
+		{ID: "dev/alpha", Name: "Alpha\nother/beta\tInjected\x1b[31m"},
 	}
 
 	var gotItems []picker.Item
@@ -178,8 +195,8 @@ func TestPickBundleSkillIDsSanitizesDisplayNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pickBundleSkillIDs: %v", err)
 	}
-	if strings.ContainsAny(gotItems[0].Display, "\n\t") {
-		t.Fatalf("display should be single-line without tabs: %q", gotItems[0].Display)
+	if strings.ContainsAny(gotItems[0].Display, "\n\t\x1b") {
+		t.Fatalf("display should be single-line without control characters: %q", gotItems[0].Display)
 	}
 	if !strings.Contains(gotItems[0].Display, "Alpha other/beta Injected") {
 		t.Fatalf("display should preserve sanitized words: %q", gotItems[0].Display)
