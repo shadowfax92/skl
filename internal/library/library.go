@@ -7,10 +7,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Skill struct {
 	ID       string
+	Name     string
 	DirName  string
 	SrcPath  string
 	External bool
@@ -118,8 +121,13 @@ func Skills() ([]Skill, error) {
 			return nil
 		}
 		id = legacySkillID(id)
+		name := manifestSkillName(path)
+		if name == "" {
+			name = id
+		}
 		out = append(out, Skill{
 			ID:       id,
+			Name:     name,
 			DirName:  filepath.Base(path),
 			SrcPath:  path,
 			External: strings.HasPrefix(id, "external/"),
@@ -176,6 +184,31 @@ func Bundles() (map[string][]string, error) {
 func hasSkillManifest(dir string) bool {
 	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
 	return err == nil
+}
+
+// manifestSkillName extracts optional display metadata without making malformed frontmatter fatal to discovery.
+func manifestSkillName(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		return ""
+	}
+	body := string(data)
+	if !strings.HasPrefix(body, "---\n") {
+		return ""
+	}
+	rest := strings.TrimPrefix(body, "---\n")
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return ""
+	}
+
+	var manifest struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal([]byte(rest[:end]), &manifest); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(manifest.Name)
 }
 
 func ensureExternalReadme(external string) error {

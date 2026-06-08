@@ -128,6 +128,31 @@ func TestLegacySkillsDirectoryRemainsUnbundled(t *testing.T) {
 	}
 }
 
+func TestSkillsParseManifestNames(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillManifest(t, filepath.Join(root, "dev", "alpha"), "---\nname: Alpha Skill\ndescription: test\n---\n# body\n")
+	writeSkillManifest(t, filepath.Join(root, "dev", "beta"), "# body\n")
+
+	skills, err := Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	got := skillNames(skills)
+	want := map[string]string{
+		"dev/alpha": "Alpha Skill",
+		"dev/beta":  "dev/beta",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skill names mismatch\ngot:  %#v\nwant: %#v", got, want)
+	}
+}
+
 func TestBundlePathRejectsPathsOutsideLibrary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -158,12 +183,24 @@ func skillIDs(skills []Skill) []string {
 	return out
 }
 
+func skillNames(skills []Skill) map[string]string {
+	out := make(map[string]string, len(skills))
+	for _, skill := range skills {
+		out[skill.ID] = skill.Name
+	}
+	return out
+}
+
 func writeSkill(t *testing.T, dir string) {
+	writeSkillManifest(t, dir, "# skill\n")
+}
+
+func writeSkillManifest(t *testing.T, dir, body string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", dir, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
 		t.Fatalf("WriteFile(SKILL.md): %v", err)
 	}
 }
