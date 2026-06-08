@@ -34,10 +34,17 @@ func TestLLMTxtExplainsLibraryLayout(t *testing.T) {
 		"legacy unbundled skills",
 		"external/<repo>/<skill>/SKILL.md",
 		"skl load external/gstack",
+		"skl pick external/gstack",
 	}
 	for _, want := range required {
 		if !strings.Contains(out, want) {
 			t.Fatalf("llmTxt missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestRootDoesNotExposeLegacyBoardCommand(t *testing.T) {
+	if _, _, err := rootCmd.Find([]string{"board"}); err == nil {
+		t.Fatalf("root command should not expose legacy board command")
 	}
 }

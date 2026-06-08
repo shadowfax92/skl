@@ -140,6 +140,7 @@ Live skills dir: ~/.skills
 How skl works:
 - The library is the source of truth.
 - skl load <bundle> copies skill folders from the library into ~/.skills.
+- skl pick <bundle> loads selected skills from one folder bundle.
 - skl unload <bundle> removes skills that no loaded bundle still claims.
 
 How to organize skills:
@@ -153,6 +154,7 @@ External repos:
 - Put third-party repos under external/<repo>/.
 - Put or keep skills at external/<repo>/<skill>/SKILL.md.
 - Example: external/gstack/agent/SKILL.md is loaded by: skl load external/gstack
+- Example: load selected external skills with: skl pick external/gstack
 - Nested .git directories are intentionally ignored by skl sync.
 - To update an external repo, run git commands inside external/<repo>/.
 
@@ -160,6 +162,7 @@ Useful commands:
 - skl ls                  list folder bundles
 - skl ls --skills         list every skill ID
 - skl load <bundle>       load a folder bundle
+- skl pick <bundle>       pick skills from a folder bundle to load
 - skl unload <bundle>     unload a folder bundle
 - skl status              show loaded skills
 - skl config              show paths

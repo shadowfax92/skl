@@ -20,14 +20,9 @@ func TestFolderBundlesUseDirectoriesAsSourceOfTruth(t *testing.T) {
 	writeSkill(t, filepath.Join(root, "gstack", "alpha"))
 	writeSkill(t, filepath.Join(root, "gstack", "beta"))
 	writeSkill(t, filepath.Join(root, "gstack", "oh", "deploy"))
+	writeSkill(t, filepath.Join(root, "external", "gstack"))
 	writeSkill(t, filepath.Join(root, "external", "gstack", "agent"))
 	writeSkill(t, filepath.Join(root, "loose"))
-
-	if err := WriteBundles(map[string][]string{
-		"ignored-yaml": {"loose"},
-	}); err != nil {
-		t.Fatalf("WriteBundles: %v", err)
-	}
 
 	skills, err := Skills()
 	if err != nil {
@@ -57,30 +52,6 @@ func TestFolderBundlesUseDirectoriesAsSourceOfTruth(t *testing.T) {
 	}
 	if !reflect.DeepEqual(bundles, want) {
 		t.Fatalf("Bundles mismatch\ngot:  %#v\nwant: %#v", bundles, want)
-	}
-}
-
-func TestWriteBundlesStillStripsInboxForLegacyCommands(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	if err := WriteBundles(map[string][]string{
-		"dev":               {"alpha"},
-		ReservedInboxBundle: {"beta"},
-	}); err != nil {
-		t.Fatalf("WriteBundles: %v", err)
-	}
-
-	bundlesPath, err := BundlesPath()
-	if err != nil {
-		t.Fatalf("BundlesPath: %v", err)
-	}
-	data, err := os.ReadFile(bundlesPath)
-	if err != nil {
-		t.Fatalf("ReadFile(%s): %v", bundlesPath, err)
-	}
-	if strings.Contains(string(data), ReservedInboxBundle+":") {
-		t.Fatalf("bundles.yaml should not persist %q:\n%s", ReservedInboxBundle, data)
 	}
 }
 
@@ -157,6 +128,81 @@ func TestLegacySkillsDirectoryRemainsUnbundled(t *testing.T) {
 	}
 }
 
+func TestSkillsParseManifestNames(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillManifest(t, filepath.Join(root, "dev", "alpha"), "---\nname: Alpha Skill\ndescription: test\n---\n# body\n")
+	writeSkillManifest(t, filepath.Join(root, "dev", "beta"), "# body\n")
+
+	skills, err := Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	got := skillNames(skills)
+	want := map[string]string{
+		"dev/alpha": "Alpha Skill",
+		"dev/beta":  "dev/beta",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skill names mismatch\ngot:  %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestSkillsParseCRLFManifestNames(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillManifest(t, filepath.Join(root, "dev", "alpha"), "---\r\nname: Alpha Skill\r\ndescription: test\r\n---\r\n# body\r\n")
+
+	skills, err := Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	got := skillNames(skills)
+	want := map[string]string{"dev/alpha": "Alpha Skill"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skill names mismatch\ngot:  %#v\nwant: %#v", got, want)
+	}
+}
+
+func TestSkillsIgnoreSymlinkSkillManifest(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	target := filepath.Join(t.TempDir(), "SKILL.md")
+	if err := os.WriteFile(target, []byte("---\nname: Linked\n---\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(target): %v", err)
+	}
+	skillDir := filepath.Join(root, "dev", "linked")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(skill dir): %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(skillDir, "SKILL.md")); err != nil {
+		t.Fatalf("Symlink(SKILL.md): %v", err)
+	}
+
+	skills, err := Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	if got := skillIDs(skills); len(got) != 0 {
+		t.Fatalf("symlink manifest should not define a skill, got: %#v", got)
+	}
+}
+
 func TestBundlePathRejectsPathsOutsideLibrary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -187,12 +233,24 @@ func skillIDs(skills []Skill) []string {
 	return out
 }
 
+func skillNames(skills []Skill) map[string]string {
+	out := make(map[string]string, len(skills))
+	for _, skill := range skills {
+		out[skill.ID] = skill.Name
+	}
+	return out
+}
+
 func writeSkill(t *testing.T, dir string) {
+	writeSkillManifest(t, dir, "# skill\n")
+}
+
+func writeSkillManifest(t *testing.T, dir, body string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", dir, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# skill\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
 		t.Fatalf("WriteFile(SKILL.md): %v", err)
 	}
 }

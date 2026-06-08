@@ -3,6 +3,7 @@ package library
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +14,7 @@ import (
 
 type Skill struct {
 	ID       string
+	Name     string
 	DirName  string
 	SrcPath  string
 	External bool
@@ -20,10 +22,7 @@ type Skill struct {
 }
 
 const ReservedInboxBundle = "inbox"
-
-type bundleFile struct {
-	Bundles map[string][]string `yaml:"bundles"`
-}
+const skillManifestReadLimit = 64 * 1024
 
 const externalReadme = `# External skill repositories
 
@@ -59,14 +58,6 @@ func ExternalPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(root, "external"), nil
-}
-
-func BundlesPath() (string, error) {
-	root, err := LibraryPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "bundles.yaml"), nil
 }
 
 // BundlePath resolves a folder bundle name inside the library root.
@@ -120,18 +111,25 @@ func Skills() ([]Skill, error) {
 		if path != root && shouldSkipDir(d.Name()) {
 			return filepath.SkipDir
 		}
-		if path == root || !hasSkillManifest(path) {
+		if path == root {
 			return nil
 		}
-
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
 		id := filepath.ToSlash(rel)
+		if isExternalRepoRoot(id) || !hasSkillManifest(path) {
+			return nil
+		}
 		id = legacySkillID(id)
+		name := manifestSkillName(path)
+		if name == "" {
+			name = id
+		}
 		out = append(out, Skill{
 			ID:       id,
+			Name:     name,
 			DirName:  filepath.Base(path),
 			SrcPath:  path,
 			External: strings.HasPrefix(id, "external/"),
@@ -185,61 +183,50 @@ func Bundles() (map[string][]string, error) {
 	return bundles, nil
 }
 
-func readPersistedBundles() (map[string][]string, error) {
-	path, err := BundlesPath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return map[string][]string{}, nil
-		}
-		return nil, fmt.Errorf("reading bundles.yaml: %w", err)
-	}
-	var f bundleFile
-	if err := yaml.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parsing bundles.yaml: %w", err)
-	}
-	if f.Bundles == nil {
-		f.Bundles = map[string][]string{}
-	}
-	return f.Bundles, nil
-}
-
-func WriteBundles(b map[string][]string) error {
-	if err := EnsureLibrary(); err != nil {
-		return err
-	}
-	path, err := BundlesPath()
-	if err != nil {
-		return err
-	}
-
-	cleaned := make(map[string][]string, len(b))
-	for name, skills := range b {
-		if name == ReservedInboxBundle {
-			continue
-		}
-		cleaned[name] = dedupSorted(skills)
-	}
-
-	data, err := yaml.Marshal(bundleFile{Bundles: cleaned})
-	if err != nil {
-		return fmt.Errorf("marshaling bundles.yaml: %w", err)
-	}
-	header := "# skl bundles — edit by hand or via `skl bundle ...`\n\n"
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(header+string(data)), 0o644); err != nil {
-		return fmt.Errorf("writing bundles.yaml: %w", err)
-	}
-	return os.Rename(tmp, path)
-}
-
 func hasSkillManifest(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
-	return err == nil
+	info, err := os.Lstat(filepath.Join(dir, "SKILL.md"))
+	return err == nil && info.Mode().IsRegular()
+}
+
+// manifestSkillName extracts bounded display metadata without making malformed frontmatter fatal to discovery.
+func manifestSkillName(dir string) string {
+	path := filepath.Join(dir, "SKILL.md")
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, skillManifestReadLimit))
+	if err != nil {
+		return ""
+	}
+	body := strings.ReplaceAll(string(data), "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
+	if !strings.HasPrefix(body, "---\n") {
+		return ""
+	}
+	rest := strings.TrimPrefix(body, "---\n")
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return ""
+	}
+
+	var manifest struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal([]byte(rest[:end]), &manifest); err != nil {
+		return ""
+	}
+	return cleanManifestName(manifest.Name)
+}
+
+func cleanManifestName(name string) string {
+	return strings.Join(strings.Fields(name), " ")
 }
 
 func ensureExternalReadme(external string) error {
@@ -257,6 +244,12 @@ func ensureExternalReadme(external string) error {
 
 func shouldSkipDir(name string) bool {
 	return strings.HasPrefix(name, ".")
+}
+
+// isExternalRepoRoot treats external/<repo> as a namespace, not a skill.
+func isExternalRepoRoot(id string) bool {
+	parts := strings.Split(id, "/")
+	return len(parts) == 2 && parts[0] == "external"
 }
 
 func legacySkillID(id string) string {
@@ -294,18 +287,4 @@ func pathDir(id string) string {
 		return ""
 	}
 	return parent
-}
-
-func dedupSorted(in []string) []string {
-	seen := make(map[string]bool, len(in))
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if s == "" || seen[s] {
-			continue
-		}
-		seen[s] = true
-		out = append(out, s)
-	}
-	sort.Strings(out)
-	return out
 }

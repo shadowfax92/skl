@@ -11,7 +11,7 @@
 Claude scans every folder in `~/.skills/`. Once you've got 70+ skills installed, most are irrelevant to any given task — they burn context window and slow startup. `skl` keeps the canonical library separate from the live directory: curate skills into folder bundles (`dev`, `writing`, `external/gstack`), then load and unload them per-project.
 
 - 🎒 **Folder bundles** — group skills by directory and load only what you need
-- ⚡ **Load / unload** — `skl load dev` copies the bundle into `~/.skills/`, `skl unload` removes it
+- ⚡ **Load / unload** — `skl load dev` copies the bundle into `~/.skills/`, `skl pick dev` loads selected skills, `skl unload` removes them
 - 🔍 **fzf everywhere** — any command with no args drops into an interactive picker
 - 📦 **Third-party packs** — `skl install <git-url>` pulls shared skill collections (e.g. [obra/superpowers](https://github.com/obra/superpowers))
 - 🏷️ **Prefix or namespace** — disambiguate third-party skills as `supa-brainstorming` or `external/superpowers/brainstorming`
@@ -43,6 +43,7 @@ mv ~/.config/skl/library/skills/cso ~/.config/skl/library/dev/cso
 
 # use them
 skl load dev                            # ~/.skills/ gets only dev's skills
+skl pick dev                            # choose a few skills from dev
 skl ls                                  # what bundles exist
 skl status                              # what's loaded right now
 skl unload                              # fzf-pick a loaded bundle to remove
@@ -68,6 +69,8 @@ skl config                      # show config and library paths
 ```sh
 skl load [bundle...]                    # load bundles (fzf if no args)
 skl load --skill foo --skill bar        # load individual skills
+skl pick [bundle]                       # fzf-pick skills from one bundle to load
+skl pick dev foo bar                    # load selected skills from a bundle
 skl unload [bundle...]                  # unload bundles (fzf if no args)
 skl unload --all                        # unload everything skl loaded
 skl prune                               # fzf-pick skills to wipe from ~/.skills/ (aliases: rm)
@@ -158,6 +161,7 @@ mv ~/.config/skl/library/skills/* ~/.config/skl/library/gstack/
 
 # Day to day
 skl load gstack      # switch to backend work
+skl pick gstack      # load only selected skills from the bundle
 skl unload           # fzf-pick to clear when done
 skl load writing     # switch to marketing work
 

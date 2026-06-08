@@ -35,7 +35,7 @@ Module name is `skl` (plain, not URL).
 
 - **Never touch dot-prefixed entries in `~/.skills/`** — `live.guardDirName` enforces.
 - **State mutations require `mgr.Lock()` / `defer mgr.Unlock()`** — same flock pattern as grove.
-- **Atomic writes everywhere** — tmp + rename for `state.json`, legacy `bundles.yaml`, `config.yaml`.
+- **Atomic writes everywhere** — tmp + rename for `state.json` and `config.yaml`.
 - **Per-bundle atomicity on load** — failure mid-bundle rolls back that bundle's copies; other bundles unaffected.
 - **Reference-counted unload** — a skill held by N bundles is only removed when the Nth bundle is unloaded.
 - **External skills are namespaced** — `external/<repo>/<skill>` → ID `external/<repo>/<skill>` to avoid collisions with local bundle paths.
