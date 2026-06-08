@@ -3,6 +3,7 @@ package library
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,7 @@ type Skill struct {
 }
 
 const ReservedInboxBundle = "inbox"
+const skillManifestReadLimit = 64 * 1024
 
 const externalReadme = `# External skill repositories
 
@@ -182,13 +184,24 @@ func Bundles() (map[string][]string, error) {
 }
 
 func hasSkillManifest(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, "SKILL.md"))
-	return err == nil
+	info, err := os.Lstat(filepath.Join(dir, "SKILL.md"))
+	return err == nil && info.Mode().IsRegular()
 }
 
-// manifestSkillName extracts optional display metadata without making malformed frontmatter fatal to discovery.
+// manifestSkillName extracts bounded display metadata without making malformed frontmatter fatal to discovery.
 func manifestSkillName(dir string) string {
-	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	path := filepath.Join(dir, "SKILL.md")
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, skillManifestReadLimit))
 	if err != nil {
 		return ""
 	}
@@ -208,7 +221,11 @@ func manifestSkillName(dir string) string {
 	if err := yaml.Unmarshal([]byte(rest[:end]), &manifest); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(manifest.Name)
+	return cleanManifestName(manifest.Name)
+}
+
+func cleanManifestName(name string) string {
+	return strings.Join(strings.Fields(name), " ")
 }
 
 func ensureExternalReadme(external string) error {

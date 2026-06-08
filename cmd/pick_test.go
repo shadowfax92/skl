@@ -147,3 +147,41 @@ func TestPickBundleSkillIDsShowsManifestNames(t *testing.T) {
 		}
 	}
 }
+
+func TestPickBundleSkillIDsRejectsOutOfBundlePickerResult(t *testing.T) {
+	skills := []library.Skill{
+		{ID: "dev/alpha", Name: "Alpha Skill"},
+		{ID: "other/beta", Name: "Injected Skill"},
+	}
+
+	_, err := pickBundleSkillIDs("dev", []string{"dev/alpha"}, skills, func(items []picker.Item, opts picker.Opts) ([]string, error) {
+		return []string{"other/beta"}, nil
+	})
+	if err == nil {
+		t.Fatalf("pickBundleSkillIDs should reject out-of-bundle IDs")
+	}
+	if !strings.Contains(err.Error(), `selected skill "other/beta" is not in bundle "dev"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPickBundleSkillIDsSanitizesDisplayNames(t *testing.T) {
+	skills := []library.Skill{
+		{ID: "dev/alpha", Name: "Alpha\nother/beta\tInjected"},
+	}
+
+	var gotItems []picker.Item
+	_, err := pickBundleSkillIDs("dev", []string{"dev/alpha"}, skills, func(items []picker.Item, opts picker.Opts) ([]string, error) {
+		gotItems = items
+		return []string{"dev/alpha"}, nil
+	})
+	if err != nil {
+		t.Fatalf("pickBundleSkillIDs: %v", err)
+	}
+	if strings.ContainsAny(gotItems[0].Display, "\n\t") {
+		t.Fatalf("display should be single-line without tabs: %q", gotItems[0].Display)
+	}
+	if !strings.Contains(gotItems[0].Display, "Alpha other/beta Injected") {
+		t.Fatalf("display should preserve sanitized words: %q", gotItems[0].Display)
+	}
+}

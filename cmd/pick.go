@@ -91,8 +91,7 @@ from each SKILL.md when available.`,
 			return err
 		}
 
-		total := newCount + reloaded
-		fmt.Fprintf(cmd.OutOrStdout(), "%s bundle %q  %s %d selected skill(s)", style.OK("loaded"), bundleName, style.Faint("+"), total)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s bundle %q  %s %d selected skill(s)", style.OK("loaded"), bundleName, style.Faint("+"), newCount)
 		if reloaded > 0 {
 			fmt.Fprintf(cmd.OutOrStdout(), "  %s %d reloaded", style.Faint("reload"), reloaded)
 		}
@@ -107,6 +106,11 @@ func pickBundleSkillIDs(bundleName string, bundleSkills []string, all []library.
 	if err != nil {
 		return nil, err
 	}
+	byID := indexSkillsByID(all)
+	members, err := bundleMemberSet(bundleName, bundleSkills, byID)
+	if err != nil {
+		return nil, err
+	}
 	chosen, err := pick(items, picker.Opts{
 		Prompt: "pick skills > ",
 		Multi:  true,
@@ -118,7 +122,7 @@ func pickBundleSkillIDs(bundleName string, bundleSkills []string, all []library.
 	if len(chosen) == 0 {
 		return nil, ErrCancelled
 	}
-	return chosen, nil
+	return validatePickedBundleSkillIDs(bundleName, chosen, members)
 }
 
 // resolveBundleSkillArgs maps bundle-local names to canonical IDs for scriptable selective loads.
@@ -162,7 +166,7 @@ func pickOneBundleName(bundles map[string][]string, prompt string, pick pickItem
 	for _, name := range names {
 		items = append(items, picker.Item{
 			ID:      name,
-			Display: fmt.Sprintf("%s  (%d skills)", name, len(bundles[name])),
+			Display: fmt.Sprintf("%s  (%d skills)", singleLinePickerText(name), len(bundles[name])),
 		})
 	}
 	chosen, err := pick(items, picker.Opts{Prompt: prompt})
@@ -277,16 +281,37 @@ func localSkillName(skill library.Skill) string {
 }
 
 func skillDisplayName(skill library.Skill) string {
-	if skill.Name != "" {
-		return skill.Name
+	if name := singleLinePickerText(skill.Name); name != "" {
+		return name
 	}
-	return skill.ID
+	return singleLinePickerText(skill.ID)
 }
 
 func skillPickerDisplay(skill library.Skill) string {
 	name := skillDisplayName(skill)
-	if name == skill.ID {
-		return skill.ID
+	id := singleLinePickerText(skill.ID)
+	if name == id {
+		return id
 	}
-	return fmt.Sprintf("%s  (%s)", name, skill.ID)
+	return fmt.Sprintf("%s  (%s)", name, id)
+}
+
+func validatePickedBundleSkillIDs(bundleName string, chosen []string, members map[string]bool) ([]string, error) {
+	seen := map[string]bool{}
+	var out []string
+	for _, id := range chosen {
+		if !members[id] {
+			return nil, fmt.Errorf("selected skill %q is not in bundle %q", id, bundleName)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func singleLinePickerText(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }

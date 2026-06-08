@@ -153,6 +153,35 @@ func TestSkillsParseManifestNames(t *testing.T) {
 	}
 }
 
+func TestSkillsIgnoreSymlinkSkillManifest(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root, err := LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	target := filepath.Join(t.TempDir(), "SKILL.md")
+	if err := os.WriteFile(target, []byte("---\nname: Linked\n---\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(target): %v", err)
+	}
+	skillDir := filepath.Join(root, "dev", "linked")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(skill dir): %v", err)
+	}
+	if err := os.Symlink(target, filepath.Join(skillDir, "SKILL.md")); err != nil {
+		t.Fatalf("Symlink(SKILL.md): %v", err)
+	}
+
+	skills, err := Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	if got := skillIDs(skills); len(got) != 0 {
+		t.Fatalf("symlink manifest should not define a skill, got: %#v", got)
+	}
+}
+
 func TestBundlePathRejectsPathsOutsideLibrary(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
