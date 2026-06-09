@@ -97,6 +97,7 @@ func printBundles(bundles map[string][]string, st *state.State) error {
 		})
 
 	fmt.Println(t)
+	fmt.Println(style.Faint(loadedSummaryText(len(st.Loaded))))
 	return nil
 }
 
@@ -140,5 +141,17 @@ func printSkills(skills []library.Skill, bundles map[string][]string, st *state.
 		})
 
 	fmt.Println(t)
+	fmt.Println(style.Faint(loadedSummaryText(len(st.Loaded))))
 	return nil
+}
+
+// loadedSummaryText renders the `skl ls` footer: the number of skills currently
+// loaded into ~/.skills/, pluralized. The count is supplied by the caller
+// (len of the state's loaded set); styling is applied at the call site.
+func loadedSummaryText(n int) string {
+	noun := "skills"
+	if n == 1 {
+		noun = "skill"
+	}
+	return fmt.Sprintf("%d %s loaded", n, noun)
 }
