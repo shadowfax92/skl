@@ -145,9 +145,7 @@ func printSkills(skills []library.Skill, bundles map[string][]string, st *state.
 	return nil
 }
 
-// loadedSummaryText renders the `skl ls` footer: the number of skills currently
-// loaded into ~/.skills/, pluralized. The count is supplied by the caller
-// (len of the state's loaded set); styling is applied at the call site.
+// loadedSummaryText renders the `skl ls` footer — the count of loaded skills, pluralized.
 func loadedSummaryText(n int) string {
 	noun := "skills"
 	if n == 1 {
