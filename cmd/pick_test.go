@@ -241,6 +241,46 @@ func TestLoadSelectedSkillGroupsRejectsDuplicateLiveDirNames(t *testing.T) {
 	}
 }
 
+func TestLoadSelectedSkillGroupsRejectsCaseFoldedDuplicateLiveDirNames(t *testing.T) {
+	setupHome(t)
+
+	root, err := library.LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(root, "dev", "Foo"), "dev")
+	writeSkillTree(t, filepath.Join(root, "ops", "foo"), "ops")
+
+	all, err := library.Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	withStdin(t, "y\n", func() {
+		_, _, err = loadSelectedSkillGroups(map[string][]string{
+			"dev": {"dev/Foo"},
+			"ops": {"ops/foo"},
+		}, all)
+	})
+	if err == nil {
+		t.Fatalf("loadSelectedSkillGroups should reject case-folded duplicate live dir names")
+	}
+	for _, want := range []string{"dev/Foo", "ops/foo", "~/.skills/Foo"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+
+	liveRoot, err := live.LivePath()
+	if err != nil {
+		t.Fatalf("LivePath: %v", err)
+	}
+	for _, name := range []string{"Foo", "foo"} {
+		if _, err := os.Stat(filepath.Join(liveRoot, name)); !os.IsNotExist(err) {
+			t.Fatalf("duplicate selection should fail before copying %q, stat err: %v", name, err)
+		}
+	}
+}
+
 func TestResolveBundleSkillArgsAcceptsLocalAndFullIDs(t *testing.T) {
 	skills := []library.Skill{
 		{ID: "external/gstack/alpha", Name: "Alpha Skill"},

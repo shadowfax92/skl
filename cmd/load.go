@@ -201,13 +201,18 @@ func applyLoadActions(actions []loadPlanAction, st *state.State) (newCount, relo
 }
 
 func rejectDuplicateLoadDestinations(actions []loadPlanAction) error {
-	seen := map[string]string{}
+	type destination struct {
+		skillID string
+		dirName string
+	}
+	seen := map[string]destination{}
 	for _, planAction := range actions {
 		skill := planAction.action.Skill
-		if previous, ok := seen[skill.DirName]; ok && previous != skill.ID {
-			return fmt.Errorf("selected skills %q and %q both load into ~/.skills/%s", previous, skill.ID, skill.DirName)
+		key := strings.ToLower(skill.DirName)
+		if previous, ok := seen[key]; ok && previous.skillID != skill.ID {
+			return fmt.Errorf("selected skills %q and %q both load into ~/.skills/%s", previous.skillID, skill.ID, previous.dirName)
 		}
-		seen[skill.DirName] = skill.ID
+		seen[key] = destination{skillID: skill.ID, dirName: skill.DirName}
 	}
 	return nil
 }
