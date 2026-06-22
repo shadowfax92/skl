@@ -130,9 +130,24 @@ type loadRollback struct {
 	previousState map[string]state.LoadEntry
 }
 
+type loadPlanAction struct {
+	bundle string
+	action bundle.LoadAction
+}
+
 func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded int, err error) {
-	var applied []loadRollback
+	actions := make([]loadPlanAction, 0, len(plan.Actions))
 	for _, action := range plan.Actions {
+		actions = append(actions, loadPlanAction{bundle: plan.Bundle, action: action})
+	}
+	return applyLoadActions(actions, st)
+}
+
+// applyLoadActions shares one rollback list across actions so multi-bundle loads stay transactional.
+func applyLoadActions(actions []loadPlanAction, st *state.State) (newCount, reloaded int, err error) {
+	var applied []loadRollback
+	for _, planAction := range actions {
+		action := planAction.action
 		existingOnDisk, err := live.SkillExists(action.Skill.DirName)
 		if err != nil {
 			rollbackLoadPlan(applied, st)
@@ -169,7 +184,7 @@ func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded in
 		}
 
 		removeLoadedByDirExcept(st, action.Skill.DirName, action.Skill.ID)
-		st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, plan.Bundle)
+		st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, planAction.bundle)
 		applied = append(applied, rollback)
 		if action.Already {
 			reloaded++

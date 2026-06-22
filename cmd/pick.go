@@ -59,7 +59,7 @@ argument, pick stays scoped to that bundle.`,
 				return fmt.Errorf("loading selected skills: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "%s selected skills  %s %d selected skill(s)", style.OK("loaded"), style.Faint("+"), newCount)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s selected skills  %s %d selected skill(s)", style.OK("loaded"), style.Faint("+"), newCount+reloaded)
 			if reloaded > 0 {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s %d reloaded", style.Faint("reload"), reloaded)
 			}
@@ -90,7 +90,7 @@ argument, pick stays scoped to that bundle.`,
 			return fmt.Errorf("loading selected skills from bundle %q: %w", bundleName, err)
 		}
 
-		fmt.Fprintf(cmd.OutOrStdout(), "%s bundle %q  %s %d selected skill(s)", style.OK("loaded"), bundleName, style.Faint("+"), newCount)
+		fmt.Fprintf(cmd.OutOrStdout(), "%s bundle %q  %s %d selected skill(s)", style.OK("loaded"), bundleName, style.Faint("+"), newCount+reloaded)
 		if reloaded > 0 {
 			fmt.Fprintf(cmd.OutOrStdout(), "  %s %d reloaded", style.Faint("reload"), reloaded)
 		}
@@ -163,17 +163,20 @@ func loadSelectedSkillGroups(grouped map[string][]string, all []library.Skill) (
 	}
 	sort.Strings(bundleNames)
 
+	var actions []loadPlanAction
 	for _, name := range bundleNames {
 		plan, err := bundle.PlanLoad(name, grouped[name], all, st)
 		if err != nil {
 			return 0, 0, err
 		}
-		groupNew, groupReloaded, err := applyLoadPlan(plan, st)
-		if err != nil {
-			return 0, 0, err
+		for _, action := range plan.Actions {
+			actions = append(actions, loadPlanAction{bundle: name, action: action})
 		}
-		newCount += groupNew
-		reloaded += groupReloaded
+	}
+
+	newCount, reloaded, err = applyLoadActions(actions, st)
+	if err != nil {
+		return 0, 0, err
 	}
 
 	if err := mgr.Save(st); err != nil {

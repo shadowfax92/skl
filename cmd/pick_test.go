@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -146,6 +147,59 @@ func TestPickCommandWithoutArgsShowsAllSkillsDirectly(t *testing.T) {
 	}
 	if _, ok := st.Loaded["dev/beta"]; ok {
 		t.Fatalf("state should not include unselected skill")
+	}
+}
+
+func TestLoadSelectedSkillGroupsRollsBackEarlierGroupsOnCancel(t *testing.T) {
+	setupHome(t)
+
+	root, err := library.LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(root, "dev", "alpha"), "alpha")
+	writeSkillTree(t, filepath.Join(root, "writing", "beta"), "beta")
+
+	all, err := library.Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	liveRoot, err := live.EnsureLive()
+	if err != nil {
+		t.Fatalf("EnsureLive: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(liveRoot, "beta"), "manual")
+
+	var newCount, reloaded int
+	withStdin(t, "n\n", func() {
+		newCount, reloaded, err = loadSelectedSkillGroups(map[string][]string{
+			"dev":     {"dev/alpha"},
+			"writing": {"writing/beta"},
+		}, all)
+	})
+	if !errors.Is(err, ErrCancelled) {
+		t.Fatalf("loadSelectedSkillGroups err = %v, want ErrCancelled", err)
+	}
+	if newCount != 0 || reloaded != 0 {
+		t.Fatalf("counts on failure = new %d reload %d, want zero", newCount, reloaded)
+	}
+	if _, err := os.Stat(filepath.Join(liveRoot, "alpha")); !os.IsNotExist(err) {
+		t.Fatalf("earlier group should be rolled back, stat err: %v", err)
+	}
+	if got := readSkillBody(t, filepath.Join(liveRoot, "beta")); got != "manual" {
+		t.Fatalf("cancelled group body = %q, want manual", got)
+	}
+
+	mgr, err := state.NewManager()
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	st, err := mgr.Load()
+	if err != nil {
+		t.Fatalf("Load state: %v", err)
+	}
+	if len(st.Loaded) != 0 {
+		t.Fatalf("state should stay empty after rollback: %#v", st.Loaded)
 	}
 }
 
