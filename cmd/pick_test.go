@@ -203,6 +203,44 @@ func TestLoadSelectedSkillGroupsRollsBackEarlierGroupsOnCancel(t *testing.T) {
 	}
 }
 
+func TestLoadSelectedSkillGroupsRejectsDuplicateLiveDirNames(t *testing.T) {
+	setupHome(t)
+
+	root, err := library.LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(root, "dev", "foo"), "dev")
+	writeSkillTree(t, filepath.Join(root, "ops", "foo"), "ops")
+
+	all, err := library.Skills()
+	if err != nil {
+		t.Fatalf("Skills: %v", err)
+	}
+	withStdin(t, "y\n", func() {
+		_, _, err = loadSelectedSkillGroups(map[string][]string{
+			"dev": {"dev/foo"},
+			"ops": {"ops/foo"},
+		}, all)
+	})
+	if err == nil {
+		t.Fatalf("loadSelectedSkillGroups should reject duplicate live dir names")
+	}
+	for _, want := range []string{"dev/foo", "ops/foo", "~/.skills/foo"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
+	}
+
+	liveRoot, err := live.LivePath()
+	if err != nil {
+		t.Fatalf("LivePath: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(liveRoot, "foo")); !os.IsNotExist(err) {
+		t.Fatalf("duplicate selection should fail before copying, stat err: %v", err)
+	}
+}
+
 func TestResolveBundleSkillArgsAcceptsLocalAndFullIDs(t *testing.T) {
 	skills := []library.Skill{
 		{ID: "external/gstack/alpha", Name: "Alpha Skill"},

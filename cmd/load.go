@@ -145,6 +145,10 @@ func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded in
 
 // applyLoadActions shares one rollback list across actions so multi-bundle loads stay transactional.
 func applyLoadActions(actions []loadPlanAction, st *state.State) (newCount, reloaded int, err error) {
+	if err := rejectDuplicateLoadDestinations(actions); err != nil {
+		return 0, 0, err
+	}
+
 	var applied []loadRollback
 	for _, planAction := range actions {
 		action := planAction.action
@@ -194,6 +198,18 @@ func applyLoadActions(actions []loadPlanAction, st *state.State) (newCount, relo
 	}
 	cleanupLoadBackups(applied)
 	return newCount, reloaded, nil
+}
+
+func rejectDuplicateLoadDestinations(actions []loadPlanAction) error {
+	seen := map[string]string{}
+	for _, planAction := range actions {
+		skill := planAction.action.Skill
+		if previous, ok := seen[skill.DirName]; ok && previous != skill.ID {
+			return fmt.Errorf("selected skills %q and %q both load into ~/.skills/%s", previous, skill.ID, skill.DirName)
+		}
+		seen[skill.DirName] = skill.ID
+	}
+	return nil
 }
 
 func rollbackLoadPlan(applied []loadRollback, st *state.State) {
