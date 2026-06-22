@@ -69,6 +69,7 @@ skl config                      # show config and library paths
 ```sh
 skl load [bundle...]                    # load bundles (fzf if no args)
 skl load --skill foo --skill bar        # load individual skills
+skl pick                                # fzf-pick any skills from the library to load
 skl pick [bundle]                       # fzf-pick skills from one bundle to load
 skl pick dev foo bar                    # load selected skills from a bundle
 skl unload [bundle...]                  # unload bundles (fzf if no args)

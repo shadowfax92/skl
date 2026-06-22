@@ -20,14 +20,17 @@ func init() {
 	rootCmd.AddCommand(pickCmd)
 }
 
+var pickSkillItems pickItemsFunc = picker.Pick
+
 var pickCmd = &cobra.Command{
 	Use:         "pick [bundle] [skill...]",
 	Annotations: map[string]string{"group": "Load:"},
-	Short:       "Pick skills from a bundle to load",
-	Long: `Pick selected skills from one bundle and load only those skills into
-~/.skills/. With no skill names, pick opens fzf and shows parsed skill names
-from each SKILL.md when available.`,
+	Short:       "Pick skills to load",
+	Long: `Pick selected skills and load only those skills into ~/.skills/.
+With no arguments, pick opens fzf over every loadable SKILL.md. With a bundle
+argument, pick stays scoped to that bundle.`,
 	Example: `  skl pick external/gstack
+  skl pick
   skl pick external/gstack design browser`,
 	Args: cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,10 +46,25 @@ from each SKILL.md when available.`,
 		var bundleName string
 		var skillArgs []string
 		if len(args) == 0 {
-			bundleName, err = pickOneBundleName(bundles, "pick bundle > ", picker.Pick)
+			selected, err := pickAllSkillIDs(lib, pickSkillItems)
 			if err != nil {
 				return err
 			}
+			grouped, err := groupSkillIDsByBundle(selected, bundles)
+			if err != nil {
+				return err
+			}
+			newCount, reloaded, err := loadSelectedSkillGroups(grouped, lib)
+			if err != nil {
+				return fmt.Errorf("loading selected skills: %w", err)
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "%s selected skills  %s %d selected skill(s)", style.OK("loaded"), style.Faint("+"), newCount)
+			if reloaded > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s %d reloaded", style.Faint("reload"), reloaded)
+			}
+			fmt.Fprintln(cmd.OutOrStdout())
+			return nil
 		} else {
 			bundleName = args[0]
 			skillArgs = args[1:]
@@ -61,35 +79,15 @@ from each SKILL.md when available.`,
 		if len(skillArgs) > 0 {
 			selected, err = resolveBundleSkillArgs(bundleName, bundleSkills, lib, skillArgs)
 		} else {
-			selected, err = pickBundleSkillIDs(bundleName, bundleSkills, lib, picker.Pick)
+			selected, err = pickBundleSkillIDs(bundleName, bundleSkills, lib, pickSkillItems)
 		}
 		if err != nil {
 			return err
 		}
 
-		mgr, err := state.NewManager()
-		if err != nil {
-			return err
-		}
-		if err := mgr.Lock(); err != nil {
-			return err
-		}
-		defer mgr.Unlock()
-
-		st, err := mgr.Load()
-		if err != nil {
-			return err
-		}
-		plan, err := bundle.PlanLoad(bundleName, selected, lib, st)
-		if err != nil {
-			return err
-		}
-		newCount, reloaded, err := applyLoadPlan(plan, st)
+		newCount, reloaded, err := loadSelectedSkillGroups(map[string][]string{bundleName: selected}, lib)
 		if err != nil {
 			return fmt.Errorf("loading selected skills from bundle %q: %w", bundleName, err)
-		}
-		if err := mgr.Save(st); err != nil {
-			return err
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "%s bundle %q  %s %d selected skill(s)", style.OK("loaded"), bundleName, style.Faint("+"), newCount)
@@ -99,6 +97,23 @@ from each SKILL.md when available.`,
 		fmt.Fprintln(cmd.OutOrStdout())
 		return nil
 	},
+}
+
+// pickAllSkillIDs lets the default picker select canonical IDs across every discovered skill.
+func pickAllSkillIDs(all []library.Skill, pick pickItemsFunc) ([]string, error) {
+	items := allSkillPickerItems(all)
+	chosen, err := pick(items, picker.Opts{
+		Prompt: "pick skills > ",
+		Multi:  true,
+		Header: "All skills",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(chosen) == 0 {
+		return nil, ErrCancelled
+	}
+	return validatePickedSkillIDs(chosen, all)
 }
 
 // pickBundleSkillIDs shows bundle skills by display name and returns canonical skill IDs.
@@ -126,6 +141,47 @@ func pickBundleSkillIDs(bundleName string, bundleSkills []string, all []library.
 	return validatePickedBundleSkillIDs(bundleName, chosen, members)
 }
 
+// loadSelectedSkillGroups applies selected IDs through the existing per-bundle load planner.
+func loadSelectedSkillGroups(grouped map[string][]string, all []library.Skill) (newCount, reloaded int, err error) {
+	mgr, err := state.NewManager()
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := mgr.Lock(); err != nil {
+		return 0, 0, err
+	}
+	defer mgr.Unlock()
+
+	st, err := mgr.Load()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	bundleNames := make([]string, 0, len(grouped))
+	for name := range grouped {
+		bundleNames = append(bundleNames, name)
+	}
+	sort.Strings(bundleNames)
+
+	for _, name := range bundleNames {
+		plan, err := bundle.PlanLoad(name, grouped[name], all, st)
+		if err != nil {
+			return 0, 0, err
+		}
+		groupNew, groupReloaded, err := applyLoadPlan(plan, st)
+		if err != nil {
+			return 0, 0, err
+		}
+		newCount += groupNew
+		reloaded += groupReloaded
+	}
+
+	if err := mgr.Save(st); err != nil {
+		return 0, 0, err
+	}
+	return newCount, reloaded, nil
+}
+
 // resolveBundleSkillArgs maps bundle-local names to canonical IDs for scriptable selective loads.
 func resolveBundleSkillArgs(bundleName string, bundleSkills []string, all []library.Skill, args []string) ([]string, error) {
 	byID := indexSkillsByID(all)
@@ -151,33 +207,6 @@ func resolveBundleSkillArgs(bundleName string, bundleSkills []string, all []libr
 		return nil, ErrCancelled
 	}
 	return out, nil
-}
-
-func pickOneBundleName(bundles map[string][]string, prompt string, pick pickItemsFunc) (string, error) {
-	if len(bundles) == 0 {
-		return "", fmt.Errorf("no bundles defined")
-	}
-	names := make([]string, 0, len(bundles))
-	for name := range bundles {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	items := make([]picker.Item, 0, len(names))
-	for _, name := range names {
-		items = append(items, picker.Item{
-			ID:      name,
-			Display: fmt.Sprintf("%s  (%d skills)", singleLinePickerText(name), len(bundles[name])),
-		})
-	}
-	chosen, err := pick(items, picker.Opts{Prompt: prompt})
-	if err != nil {
-		return "", err
-	}
-	if len(chosen) == 0 {
-		return "", ErrCancelled
-	}
-	return chosen[0], nil
 }
 
 func bundleSkillPickerItems(bundleName string, bundleSkills []string, all []library.Skill) ([]picker.Item, error) {
@@ -208,6 +237,27 @@ func bundleSkillPickerItems(bundleName string, bundleSkills []string, all []libr
 		return nil, fmt.Errorf("bundle %q has no skills", bundleName)
 	}
 	return items, nil
+}
+
+func allSkillPickerItems(all []library.Skill) []picker.Item {
+	skills := append([]library.Skill(nil), all...)
+	sort.Slice(skills, func(i, j int) bool {
+		left := strings.ToLower(skillDisplayName(skills[i]))
+		right := strings.ToLower(skillDisplayName(skills[j]))
+		if left == right {
+			return skills[i].ID < skills[j].ID
+		}
+		return left < right
+	})
+
+	items := make([]picker.Item, 0, len(skills))
+	for _, skill := range skills {
+		items = append(items, picker.Item{
+			ID:      skill.ID,
+			Display: skillPickerDisplay(skill),
+		})
+	}
+	return items
 }
 
 func resolveBundleSkillArg(bundleName, arg string, bundleSkills []string, byID map[string]library.Skill, members map[string]bool) (string, error) {
@@ -305,6 +355,47 @@ func validatePickedBundleSkillIDs(bundleName string, chosen []string, members ma
 		out = append(out, id)
 	}
 	return out, nil
+}
+
+func validatePickedSkillIDs(chosen []string, all []library.Skill) ([]string, error) {
+	byID := indexSkillsByID(all)
+	seen := map[string]bool{}
+	var out []string
+	for _, id := range chosen {
+		if _, ok := byID[id]; !ok {
+			return nil, fmt.Errorf("selected skill %q is not loadable", id)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func groupSkillIDsByBundle(selected []string, bundles map[string][]string) (map[string][]string, error) {
+	bundleBySkill := map[string]string{}
+	bundleNames := make([]string, 0, len(bundles))
+	for name := range bundles {
+		bundleNames = append(bundleNames, name)
+	}
+	sort.Strings(bundleNames)
+	for _, name := range bundleNames {
+		for _, id := range bundles[name] {
+			bundleBySkill[id] = name
+		}
+	}
+
+	grouped := map[string][]string{}
+	for _, id := range selected {
+		name, ok := bundleBySkill[id]
+		if !ok {
+			return nil, fmt.Errorf("selected skill %q is not in a bundle", id)
+		}
+		grouped[name] = append(grouped[name], id)
+	}
+	return grouped, nil
 }
 
 func singleLinePickerText(text string) string {

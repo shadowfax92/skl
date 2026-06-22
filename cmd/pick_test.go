@@ -62,6 +62,93 @@ func TestPickCommandLoadsOnlySelectedBundleSkills(t *testing.T) {
 	}
 }
 
+func TestPickCommandWithoutArgsShowsAllSkillsDirectly(t *testing.T) {
+	setupHome(t)
+
+	root, err := library.LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(root, "dev", "alpha"), "alpha")
+	writeSkillTree(t, filepath.Join(root, "dev", "beta"), "beta")
+	writeSkillTree(t, filepath.Join(root, "writing", "gamma"), "gamma")
+
+	oldPickSkillItems := pickSkillItems
+	defer func() { pickSkillItems = oldPickSkillItems }()
+
+	var gotItems []picker.Item
+	var gotOpts picker.Opts
+	pickCalls := 0
+	pickSkillItems = func(items []picker.Item, opts picker.Opts) ([]string, error) {
+		pickCalls++
+		gotItems = append([]picker.Item(nil), items...)
+		gotOpts = opts
+		return []string{"dev/alpha", "writing/gamma"}, nil
+	}
+
+	cmd := *pickCmd
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.RunE(&cmd, nil); err != nil {
+		t.Fatalf("pick RunE: %v", err)
+	}
+
+	if pickCalls != 1 {
+		t.Fatalf("pick calls = %d, want 1", pickCalls)
+	}
+	if !gotOpts.Multi {
+		t.Fatalf("flat skill picker should enable multi-select")
+	}
+	if gotOpts.Prompt != "pick skills > " {
+		t.Fatalf("prompt = %q, want %q", gotOpts.Prompt, "pick skills > ")
+	}
+
+	gotIDs := make([]string, 0, len(gotItems))
+	for _, item := range gotItems {
+		gotIDs = append(gotIDs, item.ID)
+	}
+	if want := []string{"dev/alpha", "dev/beta", "writing/gamma"}; !reflect.DeepEqual(gotIDs, want) {
+		t.Fatalf("picker items mismatch\ngot:  %#v\nwant: %#v", gotIDs, want)
+	}
+
+	liveRoot, err := live.LivePath()
+	if err != nil {
+		t.Fatalf("LivePath: %v", err)
+	}
+	for _, name := range []string{"alpha", "gamma"} {
+		if _, err := os.Stat(filepath.Join(liveRoot, name)); err != nil {
+			t.Fatalf("selected skill %q should be copied: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(liveRoot, "beta")); !os.IsNotExist(err) {
+		t.Fatalf("unselected skill should not be copied, stat err: %v", err)
+	}
+
+	mgr, err := state.NewManager()
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	st, err := mgr.Load()
+	if err != nil {
+		t.Fatalf("Load state: %v", err)
+	}
+	for id, wantBundles := range map[string][]string{
+		"dev/alpha":     {"dev"},
+		"writing/gamma": {"writing"},
+	} {
+		entry, ok := st.Loaded[id]
+		if !ok {
+			t.Fatalf("state missing selected skill %q: %#v", id, st.Loaded)
+		}
+		if !reflect.DeepEqual(entry.Bundles, wantBundles) {
+			t.Fatalf("%s bundles = %#v, want %#v", id, entry.Bundles, wantBundles)
+		}
+	}
+	if _, ok := st.Loaded["dev/beta"]; ok {
+		t.Fatalf("state should not include unselected skill")
+	}
+}
+
 func TestResolveBundleSkillArgsAcceptsLocalAndFullIDs(t *testing.T) {
 	skills := []library.Skill{
 		{ID: "external/gstack/alpha", Name: "Alpha Skill"},
