@@ -140,7 +140,8 @@ Live skills dir: ~/.skills
 How skl works:
 - The library is the source of truth.
 - skl load <bundle> copies skill folders from the library into ~/.skills.
-- skl pick <bundle> loads selected skills from one folder bundle.
+- skl pick loads selected skills from across the library.
+- skl pick <bundle> stays scoped to one folder bundle.
 - skl unload <bundle> removes skills that no loaded bundle still claims.
 
 How to organize skills:
@@ -162,7 +163,8 @@ Useful commands:
 - skl ls                  list folder bundles
 - skl ls --skills         list every skill ID
 - skl load <bundle>       load a folder bundle
-- skl pick <bundle>       pick skills from a folder bundle to load
+- skl pick                pick skills from across the library to load
+- skl pick <bundle>       pick skills from one folder bundle to load
 - skl unload <bundle>     unload a folder bundle
 - skl status              show loaded skills
 - skl config              show paths

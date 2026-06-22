@@ -34,6 +34,7 @@ func TestLLMTxtExplainsLibraryLayout(t *testing.T) {
 		"legacy unbundled skills",
 		"external/<repo>/<skill>/SKILL.md",
 		"skl load external/gstack",
+		"skl pick                pick skills from across the library to load",
 		"skl pick external/gstack",
 	}
 	for _, want := range required {
