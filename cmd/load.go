@@ -130,9 +130,28 @@ type loadRollback struct {
 	previousState map[string]state.LoadEntry
 }
 
+type loadPlanAction struct {
+	bundle string
+	action bundle.LoadAction
+}
+
 func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded int, err error) {
-	var applied []loadRollback
+	actions := make([]loadPlanAction, 0, len(plan.Actions))
 	for _, action := range plan.Actions {
+		actions = append(actions, loadPlanAction{bundle: plan.Bundle, action: action})
+	}
+	return applyLoadActions(actions, st)
+}
+
+// applyLoadActions shares one rollback list across actions so multi-bundle loads stay transactional.
+func applyLoadActions(actions []loadPlanAction, st *state.State) (newCount, reloaded int, err error) {
+	if err := rejectDuplicateLoadDestinations(actions); err != nil {
+		return 0, 0, err
+	}
+
+	var applied []loadRollback
+	for _, planAction := range actions {
+		action := planAction.action
 		existingOnDisk, err := live.SkillExists(action.Skill.DirName)
 		if err != nil {
 			rollbackLoadPlan(applied, st)
@@ -169,7 +188,7 @@ func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded in
 		}
 
 		removeLoadedByDirExcept(st, action.Skill.DirName, action.Skill.ID)
-		st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, plan.Bundle)
+		st.AddBundleClaim(action.Skill.ID, action.Skill.DirName, action.Skill.SrcPath, planAction.bundle)
 		applied = append(applied, rollback)
 		if action.Already {
 			reloaded++
@@ -179,6 +198,23 @@ func applyLoadPlan(plan bundle.LoadPlan, st *state.State) (newCount, reloaded in
 	}
 	cleanupLoadBackups(applied)
 	return newCount, reloaded, nil
+}
+
+func rejectDuplicateLoadDestinations(actions []loadPlanAction) error {
+	type destination struct {
+		skillID string
+		dirName string
+	}
+	seen := map[string]destination{}
+	for _, planAction := range actions {
+		skill := planAction.action.Skill
+		key := strings.ToLower(skill.DirName)
+		if previous, ok := seen[key]; ok && previous.skillID != skill.ID {
+			return fmt.Errorf("selected skills %q and %q both load into ~/.skills/%s", previous.skillID, skill.ID, previous.dirName)
+		}
+		seen[key] = destination{skillID: skill.ID, dirName: skill.DirName}
+	}
+	return nil
 }
 
 func rollbackLoadPlan(applied []loadRollback, st *state.State) {
