@@ -160,6 +160,7 @@ External repos:
 - To update an external repo, run git commands inside external/<repo>/.
 
 Useful commands:
+- skl cd                  print the library root for cd "$(skl cd)"
 - skl ls                  list folder bundles
 - skl ls --skills         list every skill ID
 - skl load <bundle>       load a folder bundle
