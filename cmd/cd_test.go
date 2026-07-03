@@ -2,12 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestCDCommandPrintsLibraryRoot(t *testing.T) {
+func TestCDCommandPrintsAndPreparesLibraryRoot(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -22,6 +23,11 @@ func TestCDCommandPrintsLibraryRoot(t *testing.T) {
 	want := filepath.Join(home, ".config", "skl", "library")
 	if got := strings.TrimSpace(out.String()); got != want {
 		t.Fatalf("cd output mismatch\ngot:  %s\nwant: %s", got, want)
+	}
+	if info, err := os.Stat(want); err != nil {
+		t.Fatalf("cd should prepare library root: %v", err)
+	} else if !info.IsDir() {
+		t.Fatalf("library root should be a directory: %s", want)
 	}
 }
 
