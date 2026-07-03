@@ -33,6 +33,14 @@ make install    # builds and copies to ~/bin/
 
 Make sure `~/bin` is on your `PATH`.
 
+Enable shell integration so `skl cd` can change your current shell directory:
+
+```sh
+eval "$(skl init zsh)"
+```
+
+Put that line in `~/.zshrc` or use `skl init bash` for bash.
+
 ## Quick Start
 
 ```sh
@@ -42,7 +50,7 @@ skl bundle create dev
 mv ~/.config/skl/library/skills/cso ~/.config/skl/library/dev/cso
 
 # use them
-cd "$(skl cd)"                         # jump to the library root
+skl cd                                  # jump to the library root
 skl load dev                            # ~/.skills/ gets only dev's skills
 skl pick dev                            # choose a few skills from dev
 skl ls                                  # what bundles exist
@@ -85,7 +93,9 @@ skl prune --all                         # nuke everything in ~/.skills/
 
 ```sh
 skl import                              # copy ~/.skills/ → library/
-skl cd                                  # print ~/.config/skl/library for cd "$(skl cd)"
+skl init zsh                            # print shell integration for direct skl cd
+skl cd                                  # change to the library root with shell integration
+cd "$(skl cd)"                          # fallback without shell integration
 skl push <skill>                        # capture edits from live back into library
 skl install <git-url | path>            # import third-party skills (see below)
 skl bundle create <name>                # create a folder bundle
