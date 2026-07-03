@@ -124,9 +124,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&rootLLMTxt, "llm-txt", false, "Print simple instructions for coding agents")
 }
 
-// llmTxt prints a compact, machine-friendly guide to the skl library layout.
-// It uses the resolved library path so an agent can operate on the right
-// directory without guessing where the user's skills live.
+// llmTxt prints a compact guide to the skl library layout.
 func llmTxt() (string, error) {
 	lib, err := library.LibraryPath()
 	if err != nil {
@@ -160,7 +158,9 @@ External repos:
 - To update an external repo, run git commands inside external/<repo>/.
 
 Useful commands:
-- skl cd                  print the library root for cd "$(skl cd)"
+- eval "$(skl init zsh)"  install shell integration so skl cd changes directory
+- skl cd                  change to the library root with shell integration
+- cd "$(skl cd)"          fallback path-based cd without shell integration
 - skl ls                  list folder bundles
 - skl ls --skills         list every skill ID
 - skl load <bundle>       load a folder bundle
@@ -169,6 +169,7 @@ Useful commands:
 - skl unload <bundle>     unload a folder bundle
 - skl status              show loaded skills
 - skl config              show paths
+- skl init [shell]        print shell integration for bash or zsh
 `, lib), nil
 }
 

@@ -34,6 +34,8 @@ func TestLLMTxtExplainsLibraryLayout(t *testing.T) {
 		"legacy unbundled skills",
 		"external/<repo>/<skill>/SKILL.md",
 		"skl load external/gstack",
+		`eval "$(skl init zsh)"`,
+		"skl cd                  change to the library root with shell integration",
 		"skl pick                pick skills from across the library to load",
 		"skl pick external/gstack",
 	}
