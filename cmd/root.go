@@ -124,7 +124,6 @@ func init() {
 	rootCmd.Flags().BoolVar(&rootLLMTxt, "llm-txt", false, "Print simple instructions for coding agents")
 }
 
-// llmTxt prints a compact guide to the skl library layout.
 func llmTxt() (string, error) {
 	lib, err := library.LibraryPath()
 	if err != nil {
@@ -140,6 +139,8 @@ How skl works:
 - skl load <bundle> copies skill folders from the library into ~/.skills.
 - skl pick loads selected skills from across the library.
 - skl pick <bundle> stays scoped to one folder bundle.
+- skl unpick unloads selected skills from across the loaded set.
+- skl unpick <bundle> drops only that bundle's claim on selected skills.
 - skl unload <bundle> removes skills that no loaded bundle still claims.
 
 How to organize skills:
@@ -166,6 +167,8 @@ Useful commands:
 - skl load <bundle>       load a folder bundle
 - skl pick                pick skills from across the library to load
 - skl pick <bundle>       pick skills from one folder bundle to load
+- skl unpick              pick loaded skills to unload
+- skl unpick <bundle>     pick loaded skills claimed by one bundle to unload
 - skl unload <bundle>     unload a folder bundle
 - skl status              show loaded skills
 - skl config              show paths
