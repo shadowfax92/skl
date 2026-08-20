@@ -38,6 +38,7 @@ func TestLLMTxtExplainsLibraryLayout(t *testing.T) {
 		"skl cd                  change to the library root with shell integration",
 		"skl pick                pick skills from across the library to load",
 		"skl pick external/gstack",
+		"skl unpick <bundle>",
 	}
 	for _, want := range required {
 		if !strings.Contains(out, want) {
