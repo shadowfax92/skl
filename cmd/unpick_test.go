@@ -145,6 +145,39 @@ func TestUnpickCommandAcceptsExplicitBundleSkills(t *testing.T) {
 	}
 }
 
+func TestUnpickCommandRollsBackOnRemovalFailure(t *testing.T) {
+	setupHome(t)
+	liveRoot := seedUnpickState(t, map[string]state.LoadEntry{
+		"dev/alpha":   makeLoadEntry("alpha", "alpha-src", "dev"),
+		"dev/blocked": makeLoadEntry(".blocked", "blocked-src", "dev"),
+		"dev/shared":  makeLoadEntry("shared", "shared-src", "dev", "ops"),
+	})
+
+	oldPick := unpickSkillItems
+	defer func() { unpickSkillItems = oldPick }()
+	unpickSkillItems = func(items []picker.Item, opts picker.Opts) ([]string, error) {
+		return []string{"dev/alpha", "dev/shared", "dev/blocked"}, nil
+	}
+
+	cmd := *unpickCmd
+	cmd.SetOut(&bytes.Buffer{})
+	if err := cmd.RunE(&cmd, []string{"dev"}); err == nil {
+		t.Fatalf("unpick should report the removal failure")
+	}
+	st := loadUnpickState(t)
+	if len(st.Loaded) != 3 {
+		t.Fatalf("state changed after failed unpick: %#v", st.Loaded)
+	}
+	if got := st.Loaded["dev/shared"].Bundles; !reflect.DeepEqual(got, []string{"dev", "ops"}) {
+		t.Fatalf("state changed after failed unpick: %#v", got)
+	}
+	for _, dir := range []string{"alpha", ".blocked", "shared"} {
+		if _, err := os.Stat(filepath.Join(liveRoot, dir)); err != nil {
+			t.Fatalf("skill %q should be restored after failure: %v", dir, err)
+		}
+	}
+}
+
 func seedUnpickState(t *testing.T, loaded map[string]state.LoadEntry) string {
 	t.Helper()
 	liveRoot, err := live.EnsureLive()

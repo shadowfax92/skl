@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"skl/internal/bundle"
 	"skl/internal/library"
+	"skl/internal/live"
 	"skl/internal/picker"
 	"skl/internal/state"
 	"skl/internal/style"
@@ -64,26 +66,22 @@ argument, unpick removes only that bundle's claim from selected skills.`,
 			return err
 		}
 
-		if bundleName == "" {
-			for _, id := range selected {
-				if err := unloadSkillEntirely(st, id); err != nil {
-					return err
-				}
-			}
-			if err := mgr.Save(st); err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %d selected skill(s)\n", style.OK("unloaded"), len(selected))
-			return nil
-		}
-
 		plan := bundle.UnloadPlan{Bundle: bundleName}
 		for _, id := range selected {
 			plan.Actions = append(plan.Actions, bundle.UnloadAction{SkillID: id, Entry: st.Loaded[id]})
 		}
-		removed, kept := applyUnloadPlan(plan, st)
-		if err := mgr.Save(st); err != nil {
+		removed, kept, applied, err := applyUnpickPlan(plan, st)
+		if err != nil {
 			return err
+		}
+		if err := mgr.Save(st); err != nil {
+			return rollbackUnpickError(err, applied, st)
+		}
+		cleanupUnpickBackups(applied)
+
+		if bundleName == "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %d selected skill(s)\n", style.OK("unloaded"), removed)
+			return nil
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "%s bundle %q  %s %d removed  %s %d kept (other bundles)\n",
 			style.OK("unpicked"), bundleName,
@@ -153,4 +151,69 @@ func hasBundleClaim(entry state.LoadEntry, bundleName string) bool {
 		}
 	}
 	return false
+}
+
+type unpickRollback struct {
+	skillID    string
+	entry      state.LoadEntry
+	dirName    string
+	backupPath string
+}
+
+func applyUnpickPlan(plan bundle.UnloadPlan, st *state.State) (removed, kept int, applied []unpickRollback, err error) {
+	for _, action := range plan.Actions {
+		entry, ok := st.Loaded[action.SkillID]
+		if !ok {
+			return 0, 0, nil, rollbackUnpickError(fmt.Errorf("skill %q not loaded", action.SkillID), applied, st)
+		}
+		step := unpickRollback{skillID: action.SkillID, entry: entry, dirName: entry.DirName}
+		if plan.Bundle != "" && len(entry.Bundles) > 1 {
+			applied = append(applied, step)
+			st.RemoveBundleClaim(action.SkillID, plan.Bundle)
+			kept++
+			continue
+		}
+
+		exists, err := live.SkillExists(entry.DirName)
+		if err != nil {
+			return 0, 0, nil, rollbackUnpickError(err, applied, st)
+		}
+		if exists {
+			step.backupPath, err = backupLiveSkill(entry.DirName)
+			if err != nil {
+				return 0, 0, nil, rollbackUnpickError(err, applied, st)
+			}
+		}
+		applied = append(applied, step)
+		st.RemoveLoaded(action.SkillID)
+		removed++
+	}
+	return removed, kept, applied, nil
+}
+
+func rollbackUnpickError(cause error, applied []unpickRollback, st *state.State) error {
+	if err := rollbackUnpick(applied, st); err != nil {
+		return fmt.Errorf("%w (rollback failed: %v)", cause, err)
+	}
+	return cause
+}
+
+func rollbackUnpick(applied []unpickRollback, st *state.State) error {
+	var firstErr error
+	for i := len(applied) - 1; i >= 0; i-- {
+		step := applied[i]
+		st.Loaded[step.skillID] = step.entry
+		if err := restoreLiveSkill(step.dirName, step.backupPath); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func cleanupUnpickBackups(applied []unpickRollback) {
+	for _, step := range applied {
+		if step.backupPath != "" {
+			_ = os.RemoveAll(step.backupPath)
+		}
+	}
 }
