@@ -18,6 +18,7 @@ import (
 
 func init() {
 	loadCmd.Flags().StringSlice("skill", nil, "Load individual skill(s) directly (repeatable)")
+	loadCmd.Flags().BoolP("recursive", "r", false, "Also load every bundle nested inside each bundle's folder")
 	rootCmd.AddCommand(loadCmd)
 }
 
@@ -28,22 +29,27 @@ var loadCmd = &cobra.Command{
 	Short:       "Load bundles into ~/.skills/ (fzf when no args)",
 	Long: `Copy skills from the library into ~/.skills/. Re-running load refreshes
 managed skills from the current library version. If an existing live skill
-dir would be replaced for some other reason, load asks before overwriting it.`,
+dir would be replaced for some other reason, load asks before overwriting it.
+
+A bundle folder whose skl.yaml says "recursive: true" also loads every bundle
+nested inside it. --recursive does the same once for any bundle or folder.
+Nested skills are claimed by the bundle you name, so unloading it removes them.`,
+	Example: `  skl load sf
+  skl load -r external/gstack`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		individualSkills, _ := cmd.Flags().GetStringSlice("skill")
+		recursive, _ := cmd.Flags().GetBool("recursive")
+		out := cmd.OutOrStdout()
 
-		bundles, err := library.Bundles()
+		cat, err := library.ReadCatalog()
 		if err != nil {
 			return err
 		}
-		lib, err := library.Skills()
-		if err != nil {
-			return err
-		}
+		lib := cat.Skills
 
 		chosen := args
 		if len(chosen) == 0 && len(individualSkills) == 0 {
-			chosen, err = pickBundles(bundles, "load > ")
+			chosen, err = pickBundles(cat.Bundles, "load > ")
 			if err != nil {
 				return err
 			}
@@ -66,9 +72,9 @@ dir would be replaced for some other reason, load asks before overwriting it.`,
 		totalNew, totalReloaded := 0, 0
 
 		for _, name := range chosen {
-			skills, ok := bundles[name]
-			if !ok {
-				return fmt.Errorf("bundle %q not found", name)
+			skills, err := cat.Resolve(name, recursive)
+			if err != nil {
+				return err
 			}
 			plan, err := bundle.PlanLoad(name, skills, lib, st)
 			if err != nil {
@@ -81,15 +87,21 @@ dir would be replaced for some other reason, load asks before overwriting it.`,
 			totalNew += newCount
 			totalReloaded += reloaded
 			if reloaded > 0 {
-				fmt.Printf("%s bundle %q  %s %d new  %s %d reloaded\n",
+				fmt.Fprintf(out, "%s bundle %q  %s %d new  %s %d reloaded",
 					style.OK("loaded"), name,
 					style.Faint("+"), newCount,
 					style.Faint("↻"), reloaded)
 			} else {
-				fmt.Printf("%s bundle %q  %s %d skill(s)\n",
+				fmt.Fprintf(out, "%s bundle %q  %s %d skill(s)",
 					style.OK("loaded"), name,
 					style.Faint("+"), newCount)
 			}
+			if recursive || cat.Recursive[name] {
+				if nested := cat.Nested(name); len(nested) > 0 {
+					fmt.Fprintf(out, "  %s", style.Faint("(includes "+strings.Join(nested, ", ")+")"))
+				}
+			}
+			fmt.Fprintln(out)
 		}
 
 		for _, id := range individualSkills {
@@ -107,18 +119,18 @@ dir would be replaced for some other reason, load asks before overwriting it.`,
 			}
 			totalNew += newCount
 			totalReloaded += reloaded
-			fmt.Printf("%s skill %q\n", style.OK("loaded"), id)
+			fmt.Fprintf(out, "%s skill %q\n", style.OK("loaded"), id)
 		}
 
 		if err := mgr.Save(st); err != nil {
 			return err
 		}
 		total := totalNew + totalReloaded
-		fmt.Printf("\n%s %d skill(s)", style.OK("done:"), total)
+		fmt.Fprintf(out, "\n%s %d skill(s)", style.OK("done:"), total)
 		if totalReloaded > 0 {
-			fmt.Printf("  %s %d reloaded", style.Faint("↻"), totalReloaded)
+			fmt.Fprintf(out, "  %s %d reloaded", style.Faint("↻"), totalReloaded)
 		}
-		fmt.Println()
+		fmt.Fprintln(out)
 		return nil
 	},
 }
