@@ -116,9 +116,13 @@ func TestCatalogRecursiveGroupFolderBecomesBundle(t *testing.T) {
 
 func TestCatalogRejectsMalformedBundleSettings(t *testing.T) {
 	cases := map[string]string{
-		"misspelled key": "recursve: true\n",
-		"wrong type":     "recursive: [true]\n",
-		"not a mapping":  "- recursive\n",
+		"misspelled key":  "recursve: true\n",
+		"wrong type":      "recursive: [true]\n",
+		"not a mapping":   "- recursive\n",
+		"empty value":     "recursive:\n",
+		"explicit null":   "recursive: null\n",
+		"second document": "{}\n---\nrecursive: true\n",
+		"oversized":       strings.Repeat("# padding line\n", bundleSettingsReadLimit/15+1) + "recursive: true\n",
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {

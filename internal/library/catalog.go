@@ -1,6 +1,7 @@
 package library
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -18,11 +19,12 @@ const BundleSettingsFile = "skl.yaml"
 
 const bundleSettingsReadLimit = 64 * 1024
 
-// bundleSettings is the skl.yaml schema. Decoding is strict so a misspelled
-// key fails loudly instead of silently loading a smaller bundle.
+// bundleSettings is the skl.yaml schema. Parsing is strict (see
+// readBundleSettings) so a typo fails loudly instead of silently loading a
+// smaller bundle.
 type bundleSettings struct {
 	// Recursive makes the bundle include every bundle nested below its folder.
-	Recursive bool `yaml:"recursive"`
+	Recursive bool
 }
 
 // Catalog is one consistent read of the library: every skill, every loadable
@@ -163,18 +165,56 @@ func hasBundleSettings(dir string) bool {
 	return isRegularFile(dir, BundleSettingsFile)
 }
 
+// readBundleSettings accepts one YAML mapping whose only key is `recursive`
+// with a real boolean. Everything else — unknown keys, null or string values,
+// extra documents, files over the read limit — is an error, because any
+// lenient reading would quietly load fewer skills than the owner asked for.
+// An empty (or comment-only) file means no settings.
 func readBundleSettings(path string) (bundleSettings, error) {
 	var settings bundleSettings
+	invalid := func(err error) (bundleSettings, error) {
+		return bundleSettings{}, fmt.Errorf("parsing %s (supported setting: recursive: true|false): %w", path, err)
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return settings, fmt.Errorf("reading %s: %w", path, err)
 	}
 	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, bundleSettingsReadLimit+1))
+	if err != nil {
+		return settings, fmt.Errorf("reading %s: %w", path, err)
+	}
+	if len(data) > bundleSettingsReadLimit {
+		return invalid(fmt.Errorf("file is larger than %d bytes", bundleSettingsReadLimit))
+	}
 
-	dec := yaml.NewDecoder(io.LimitReader(file, bundleSettingsReadLimit))
-	dec.KnownFields(true)
-	if err := dec.Decode(&settings); err != nil && !errors.Is(err, io.EOF) {
-		return bundleSettings{}, fmt.Errorf("parsing %s (supported setting: recursive: true|false): %w", path, err)
+	// Decoding into a map (not the struct) keeps `recursive:` / `recursive: null`
+	// visible as a present key with a nil value; a bool field would read false.
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	var doc map[string]any
+	if err := dec.Decode(&doc); err != nil {
+		if errors.Is(err, io.EOF) {
+			return settings, nil
+		}
+		return invalid(err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return invalid(errors.New("expected a single YAML document"))
+	}
+
+	for key, value := range doc {
+		switch key {
+		case "recursive":
+			recursive, ok := value.(bool)
+			if !ok {
+				return invalid(fmt.Errorf("recursive must be true or false, got %v", value))
+			}
+			settings.Recursive = recursive
+		default:
+			return invalid(fmt.Errorf("unknown setting %q", key))
+		}
 	}
 	return settings, nil
 }
