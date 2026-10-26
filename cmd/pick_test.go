@@ -150,6 +150,70 @@ func TestPickCommandWithoutArgsShowsAllSkillsDirectly(t *testing.T) {
 	}
 }
 
+func TestPickCommandWithoutArgsClaimsHomeBundleInsideRecursiveBundle(t *testing.T) {
+	setupHome(t)
+
+	root, err := library.LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(root, "sf", "sf-build"), "build")
+	writeSkillTree(t, filepath.Join(root, "sf", "ref", "mp-tdd"), "tdd")
+	if err := os.WriteFile(filepath.Join(root, "sf", library.BundleSettingsFile), []byte("recursive: true\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", library.BundleSettingsFile, err)
+	}
+
+	oldPickSkillItems := pickSkillItems
+	defer func() { pickSkillItems = oldPickSkillItems }()
+	pickSkillItems = func(items []picker.Item, opts picker.Opts) ([]string, error) {
+		return []string{"sf/ref/mp-tdd", "sf/sf-build"}, nil
+	}
+
+	cmd := *pickCmd
+	cmd.SetOut(&bytes.Buffer{})
+	if err := cmd.RunE(&cmd, nil); err != nil {
+		t.Fatalf("pick RunE: %v", err)
+	}
+
+	st := loadUnpickState(t)
+	for id, want := range map[string][]string{
+		"sf/ref/mp-tdd": {"sf/ref"},
+		"sf/sf-build":   {"sf"},
+	} {
+		if got := st.Loaded[id].Bundles; !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s claims = %#v, want %#v", id, got, want)
+		}
+	}
+}
+
+func TestPickCommandOffersNestedSkillsOfRecursiveBundle(t *testing.T) {
+	setupHome(t)
+
+	root, err := library.LibraryPath()
+	if err != nil {
+		t.Fatalf("LibraryPath: %v", err)
+	}
+	writeSkillTree(t, filepath.Join(root, "sf", "sf-build"), "build")
+	writeSkillTree(t, filepath.Join(root, "sf", "ref", "mp-tdd"), "tdd")
+	if err := os.WriteFile(filepath.Join(root, "sf", library.BundleSettingsFile), []byte("recursive: true\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", library.BundleSettingsFile, err)
+	}
+
+	cmd := *pickCmd
+	cmd.SetOut(&bytes.Buffer{})
+	if err := cmd.RunE(&cmd, []string{"sf", "mp-tdd"}); err != nil {
+		t.Fatalf("pick RunE: %v", err)
+	}
+
+	st := loadUnpickState(t)
+	if got := st.Loaded["sf/ref/mp-tdd"].Bundles; !reflect.DeepEqual(got, []string{"sf"}) {
+		t.Fatalf("nested skill picked from sf should be claimed by sf, got %#v", got)
+	}
+	if _, ok := st.Loaded["sf/sf-build"]; ok {
+		t.Fatalf("unselected skill should not load")
+	}
+}
+
 func TestLoadSelectedSkillGroupsRollsBackEarlierGroupsOnCancel(t *testing.T) {
 	setupHome(t)
 
