@@ -95,10 +95,25 @@ func EnsureLibrary() error {
 }
 
 func Skills() ([]Skill, error) {
-	if err := EnsureLibrary(); err != nil {
+	scan, err := scanLibrary()
+	if err != nil {
 		return nil, err
 	}
-	var out []Skill
+	return scan.skills, nil
+}
+
+// libraryScan is the raw result of one library walk: discovered skills plus
+// the skl.yaml files found in non-skill folders, keyed by bundle name.
+type libraryScan struct {
+	skills   []Skill
+	settings map[string][]string
+}
+
+func scanLibrary() (libraryScan, error) {
+	scan := libraryScan{settings: map[string][]string{}}
+	if err := EnsureLibrary(); err != nil {
+		return scan, err
+	}
 
 	root, _ := LibraryPath()
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -120,6 +135,9 @@ func Skills() ([]Skill, error) {
 		}
 		id := filepath.ToSlash(rel)
 		if isExternalRepoRoot(id) || !hasSkillManifest(path) {
+			if name := settingsBundleName(id); name != "" && hasBundleSettings(path) {
+				scan.settings[name] = append(scan.settings[name], filepath.Join(path, BundleSettingsFile))
+			}
 			return nil
 		}
 		id = legacySkillID(id)
@@ -127,7 +145,7 @@ func Skills() ([]Skill, error) {
 		if name == "" {
 			name = id
 		}
-		out = append(out, Skill{
+		scan.skills = append(scan.skills, Skill{
 			ID:       id,
 			Name:     name,
 			DirName:  filepath.Base(path),
@@ -135,14 +153,16 @@ func Skills() ([]Skill, error) {
 			External: strings.HasPrefix(id, "external/"),
 			Repo:     repoNameFromSkillID(id),
 		})
+		// Skill folders are leaves: nested SKILL.md or skl.yaml files inside a
+		// skill are part of that skill, not separate skills or bundles.
 		return filepath.SkipDir
 	})
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		return scan, err
 	}
 
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
+	sort.Slice(scan.skills, func(i, j int) bool { return scan.skills[i].ID < scan.skills[j].ID })
+	return scan, nil
 }
 
 func FindSkill(id string) (*Skill, error) {
@@ -158,33 +178,22 @@ func FindSkill(id string) (*Skill, error) {
 	return nil, fmt.Errorf("skill %q not found in library", id)
 }
 
+// Bundles maps each loadable bundle to the skill IDs `skl load` installs for
+// it, with skl.yaml's recursive opt-in applied. See Catalog.
 func Bundles() (map[string][]string, error) {
-	skills, err := Skills()
+	cat, err := ReadCatalog()
 	if err != nil {
 		return nil, err
 	}
-
-	bundles := make(map[string][]string)
-	var inbox []string
-	for _, skill := range skills {
-		parent := pathDir(skill.ID)
-		if parent == "" {
-			inbox = append(inbox, skill.ID)
-			continue
-		}
-		bundles[parent] = append(bundles[parent], skill.ID)
-	}
-	if len(inbox) > 0 {
-		bundles[ReservedInboxBundle] = inbox
-	}
-	for name := range bundles {
-		sort.Strings(bundles[name])
-	}
-	return bundles, nil
+	return cat.Bundles, nil
 }
 
 func hasSkillManifest(dir string) bool {
-	info, err := os.Lstat(filepath.Join(dir, "SKILL.md"))
+	return isRegularFile(dir, "SKILL.md")
+}
+
+func isRegularFile(dir, name string) bool {
+	info, err := os.Lstat(filepath.Join(dir, name))
 	return err == nil && info.Mode().IsRegular()
 }
 
