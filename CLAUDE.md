@@ -21,7 +21,7 @@ Module name is `skl` (plain, not URL).
 
 **Internal packages** (`internal/`):
 - `config/` — YAML config at `~/.config/skl/config.yaml`. Auto-creates with header on first read.
-- `library/` — Source-of-truth filesystem at `~/.config/skl/library/`. Discovers folder bundles by walking skill directories. `skills/<skill>` is legacy unbundled storage; `external/<repo>/<skill>` is a namespaced external bundle.
+- `library/` — Source-of-truth filesystem at `~/.config/skl/library/`. Discovers folder bundles by walking skill directories. `skills/<skill>` is legacy unbundled storage; `external/<repo>/<skill>` is a namespaced external bundle. `ReadCatalog()` is the one-walk snapshot commands resolve bundles against: it applies each bundle folder's `skl.yaml` (`recursive: true` → the bundle covers every skill below its folder) and `Catalog.Resolve(name, recursive)` answers `skl load [-r]`. `Bundles()` returns that effective membership, so one skill can sit in several bundles; `HomeBundle(id)` is a skill's direct folder.
 - `live/` — `~/.skills/` filesystem. `CopySkill` (recursive copy with rollback), `RemoveSkill` (refuses dot names), `LoadedDirs`. Always skips dot-prefixed entries.
 - `state/` — JSON state at `~/.local/state/skl/state.json`. Flock-locked via `syscall.Flock()` (grove pattern). Tracks per-skill bundle claims for reference-counted unload.
 - `bundle/` — Pure functions: `PlanLoad`, `PlanUnload`. No I/O. Resolves which skills to copy/skip and which to remove vs keep on unload.
@@ -29,7 +29,7 @@ Module name is `skl` (plain, not URL).
 - `gitlib/` — Thin shell-out to git for sync (`init`, `add`/`commit`, `pull --rebase`, `push`, `clone`).
 - `style/` — Shared lipgloss colors and helpers.
 
-**Data flow**: library = source of truth → `skl load <bundle>` resolves the bundle folder's direct skills, copies skill trees into `~/.skills/`, records each (skill, bundle) claim in state. `skl unload <bundle>` reads state, decrements bundle claims; only removes a skill from disk when no claim remains.
+**Data flow**: library = source of truth → `skl load <bundle>` resolves the bundle through the catalog (direct skills, or every nested skill when `skl.yaml` says `recursive: true` or `-r` is given), copies skill trees into `~/.skills/`, records each (skill, bundle) claim in state under the bundle name the user typed. `skl unload <bundle>` reads state, decrements bundle claims; only removes a skill from disk when no claim remains.
 
 ## Key Invariants
 
@@ -38,6 +38,8 @@ Module name is `skl` (plain, not URL).
 - **Atomic writes everywhere** — tmp + rename for `state.json` and `config.yaml`.
 - **Per-bundle atomicity on load** — failure mid-bundle rolls back that bundle's copies; other bundles unaffected.
 - **Reference-counted unload** — a skill held by N bundles is only removed when the Nth bundle is unloaded.
+- **Recursive loads claim under the named bundle** — `skl load sf` claims `sf/ref/*` as `sf`, so unload stays state-only and never re-reads `skl.yaml`.
+- **`skl.yaml` stays in the library** — it sits at bundle root, outside every skill folder, so `live.CopySkill` never copies it. Parsing is strict (unknown keys error) and only `ReadCatalog` parses it; `Skills()` ignores it.
 - **External skills are namespaced** — `external/<repo>/<skill>` → ID `external/<repo>/<skill>` to avoid collisions with local bundle paths.
 
 ## Two helpers worth flagging

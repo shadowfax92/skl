@@ -148,6 +148,8 @@ How to organize skills:
 - A skill is any directory containing SKILL.md.
 - Put bundled skills at <bundle>/<skill>/SKILL.md.
 - Example: dev/cso/SKILL.md is loaded by: skl load dev
+- Nested folders are separate bundles: dev/ops/x/SKILL.md is loaded by: skl load dev/ops
+- <bundle>/skl.yaml with recursive: true makes skl load <bundle> include every nested bundle.
 - legacy unbundled skills live at skills/<skill>/SKILL.md.
 
 External repos:
@@ -165,6 +167,7 @@ Useful commands:
 - skl ls                  list folder bundles
 - skl ls --skills         list every skill ID
 - skl load <bundle>       load a folder bundle
+- skl load -r <bundle>    load a bundle plus every bundle nested inside it
 - skl pick                pick skills from across the library to load
 - skl pick <bundle>       pick skills from one folder bundle to load
 - skl unpick              pick loaded skills to unload
