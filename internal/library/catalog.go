@@ -174,7 +174,7 @@ func readBundleSettings(path string) (bundleSettings, error) {
 	dec := yaml.NewDecoder(io.LimitReader(file, bundleSettingsReadLimit))
 	dec.KnownFields(true)
 	if err := dec.Decode(&settings); err != nil && !errors.Is(err, io.EOF) {
-		return bundleSettings{}, fmt.Errorf("parsing %s: %w", path, err)
+		return bundleSettings{}, fmt.Errorf("parsing %s (supported setting: recursive: true|false): %w", path, err)
 	}
 	return settings, nil
 }
