@@ -3,6 +3,7 @@ package cmd
 import (
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -54,12 +55,49 @@ func TestPrintBundlesShowsLoadedTotal(t *testing.T) {
 		"s3": {Bundles: []string{"beta"}},
 	}}
 	out := captureStdout(t, func() {
-		if err := printBundles(bundles, st); err != nil {
+		if err := printBundles(&library.Catalog{Bundles: bundles}, st); err != nil {
 			t.Fatalf("printBundles: %v", err)
 		}
 	})
 	if !strings.Contains(out, "2 skills loaded") {
 		t.Fatalf("expected footer %q in output:\n%s", "2 skills loaded", out)
+	}
+	if strings.Contains(out, "INCLUDES") {
+		t.Fatalf("libraries without recursive bundles keep the original columns:\n%s", out)
+	}
+}
+
+func TestPrintBundlesShowsRecursiveInclusion(t *testing.T) {
+	cat := &library.Catalog{
+		Bundles: map[string][]string{
+			"dev":         {"dev/alpha"},
+			"sf":          {"sf/ref/deep/mp-grill", "sf/ref/mp-tdd", "sf/sf-build"},
+			"sf/ref":      {"sf/ref/mp-tdd"},
+			"sf/ref/deep": {"sf/ref/deep/mp-grill"},
+		},
+		Recursive: map[string]bool{"sf": true},
+	}
+	st := &state.State{Loaded: map[string]state.LoadEntry{}}
+	out := captureStdout(t, func() {
+		if err := printBundles(cat, st); err != nil {
+			t.Fatalf("printBundles: %v", err)
+		}
+	})
+
+	rows := map[string][]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			rows[fields[0]] = fields
+		}
+	}
+	if got := rows["BUNDLE"]; !reflect.DeepEqual(got, []string{"BUNDLE", "SKILLS", "STATUS", "INCLUDES"}) {
+		t.Fatalf("header = %#v\n%s", got, out)
+	}
+	if got := rows["sf"]; !reflect.DeepEqual(got, []string{"sf", "3", "—", "sf/ref,", "sf/ref/deep"}) {
+		t.Fatalf("sf row = %#v\n%s", got, out)
+	}
+	if got := rows["sf/ref"]; !reflect.DeepEqual(got, []string{"sf/ref", "1", "—"}) {
+		t.Fatalf("sf/ref row = %#v\n%s", got, out)
 	}
 }
 

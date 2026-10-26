@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"sort"
+	"strings"
 
 	"skl/internal/library"
 	"skl/internal/state"
@@ -25,10 +26,11 @@ var bundleShowCmd = &cobra.Command{
 	Short:   "Show skills in bundles (fzf multi-picks when no names given)",
 	Args:    cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		bundles, err := library.Bundles()
+		cat, err := library.ReadCatalog()
 		if err != nil {
 			return err
 		}
+		bundles := cat.Bundles
 		if len(bundles) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), style.Faint("No bundles defined."))
 			return nil
@@ -54,12 +56,7 @@ var bundleShowCmd = &cobra.Command{
 			return err
 		}
 
-		all, err := library.Skills()
-		if err != nil {
-			return err
-		}
-
-		writeBundleShow(cmd.OutOrStdout(), names, bundles, st, all)
+		writeBundleShow(cmd.OutOrStdout(), names, cat, st)
 		return nil
 	},
 }
@@ -73,10 +70,11 @@ func validateBundleNames(names []string, bundles map[string][]string) error {
 	return nil
 }
 
-// writeBundleShow renders each selected bundle as its own table.
-func writeBundleShow(out io.Writer, names []string, bundles map[string][]string, st *state.State, all []library.Skill) {
-	byID := make(map[string]library.Skill, len(all))
-	for _, s := range all {
+// writeBundleShow renders each selected bundle as its own table, listing the
+// skills `skl load` would install (nested ones included for recursive bundles).
+func writeBundleShow(out io.Writer, names []string, cat *library.Catalog, st *state.State) {
+	byID := make(map[string]library.Skill, len(cat.Skills))
+	for _, s := range cat.Skills {
 		byID[s.ID] = s
 	}
 
@@ -84,17 +82,24 @@ func writeBundleShow(out io.Writer, names []string, bundles map[string][]string,
 		if i > 0 {
 			fmt.Fprintln(out)
 		}
-		writeOneBundleShow(out, name, bundles[name], st, byID)
+		writeOneBundleShow(out, name, cat, st, byID)
 	}
 }
 
-func writeOneBundleShow(out io.Writer, name string, bundleSkills []string, st *state.State, byID map[string]library.Skill) {
-	skills := slices.Clone(bundleSkills)
+func writeOneBundleShow(out io.Writer, name string, cat *library.Catalog, st *state.State, byID map[string]library.Skill) {
+	skills := slices.Clone(cat.Bundles[name])
 	sort.Strings(skills)
 
 	header := name
 	if name == library.ReservedInboxBundle {
 		header += style.Faint("  (derived: skills in no bundle)")
+	}
+	if cat.Recursive[name] {
+		note := "recursive"
+		if nested := cat.Nested(name); len(nested) > 0 {
+			note += ": includes " + strings.Join(nested, ", ")
+		}
+		header += style.Faint("  (" + note + ")")
 	}
 	fmt.Fprintln(out, style.Header(header))
 

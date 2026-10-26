@@ -27,14 +27,11 @@ var lsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		showSkills, _ := cmd.Flags().GetBool("skills")
 
-		bundles, err := library.Bundles()
+		cat, err := library.ReadCatalog()
 		if err != nil {
 			return err
 		}
-		skills, err := library.Skills()
-		if err != nil {
-			return err
-		}
+		bundles, skills := cat.Bundles, cat.Skills
 		mgr, err := state.NewManager()
 		if err != nil {
 			return err
@@ -54,11 +51,15 @@ var lsCmd = &cobra.Command{
 		if showSkills {
 			return printSkills(skills, bundles, st)
 		}
-		return printBundles(bundles, st)
+		return printBundles(cat, st)
 	},
 }
 
-func printBundles(bundles map[string][]string, st *state.State) error {
+// printBundles lists each bundle with the number of skills `skl load` would
+// install. When any bundle is recursive, an INCLUDES column names the nested
+// bundles it pulls in; otherwise the table keeps its original three columns.
+func printBundles(cat *library.Catalog, st *state.State) error {
+	bundles := cat.Bundles
 	loadedBundles := map[string]bool{}
 	for _, b := range st.LoadedBundles() {
 		loadedBundles[b] = true
@@ -75,18 +76,32 @@ func printBundles(bundles map[string][]string, st *state.State) error {
 		return nil
 	}
 
+	headers := []string{"BUNDLE", "SKILLS", "STATUS"}
+	showIncludes := len(cat.Recursive) > 0
+	if showIncludes {
+		headers = append(headers, "INCLUDES")
+	}
+
 	var rows [][]string
 	for _, n := range names {
 		mark := style.Faint("—")
 		if loadedBundles[n] {
 			mark = style.OK("loaded")
 		}
-		rows = append(rows, []string{n, fmt.Sprintf("%d", len(bundles[n])), mark})
+		row := []string{n, fmt.Sprintf("%d", len(bundles[n])), mark}
+		if showIncludes {
+			includes := ""
+			if cat.Recursive[n] {
+				includes = strings.Join(cat.Nested(n), ", ")
+			}
+			row = append(row, includes)
+		}
+		rows = append(rows, row)
 	}
 
 	t := table.New().
 		Border(lipgloss.HiddenBorder()).
-		Headers("BUNDLE", "SKILLS", "STATUS").
+		Headers(headers...).
 		Rows(rows...).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			s := lipgloss.NewStyle().PaddingRight(2)

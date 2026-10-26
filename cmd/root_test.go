@@ -39,6 +39,8 @@ func TestLLMTxtExplainsLibraryLayout(t *testing.T) {
 		"skl pick                pick skills from across the library to load",
 		"skl pick external/gstack",
 		"skl unpick <bundle>",
+		"<bundle>/skl.yaml with recursive: true",
+		"skl load -r <bundle>",
 	}
 	for _, want := range required {
 		if !strings.Contains(out, want) {

@@ -50,10 +50,7 @@ argument, pick stays scoped to that bundle.`,
 			if err != nil {
 				return err
 			}
-			grouped, err := groupSkillIDsByBundle(selected, bundles)
-			if err != nil {
-				return err
-			}
+			grouped := groupSkillIDsByHomeBundle(selected)
 			newCount, reloaded, err := loadSelectedSkillGroups(grouped, lib)
 			if err != nil {
 				return fmt.Errorf("loading selected skills: %w", err)
@@ -377,28 +374,16 @@ func validatePickedSkillIDs(chosen []string, all []library.Skill) ([]string, err
 	return out, nil
 }
 
-func groupSkillIDsByBundle(selected []string, bundles map[string][]string) (map[string][]string, error) {
-	bundleBySkill := map[string]string{}
-	bundleNames := make([]string, 0, len(bundles))
-	for name := range bundles {
-		bundleNames = append(bundleNames, name)
-	}
-	sort.Strings(bundleNames)
-	for _, name := range bundleNames {
-		for _, id := range bundles[name] {
-			bundleBySkill[id] = name
-		}
-	}
-
+// groupSkillIDsByHomeBundle claims each individually picked skill for the
+// folder it lives in. A recursive bundle also lists nested skills, so looking
+// skills up in the membership map would make the claim ambiguous.
+func groupSkillIDsByHomeBundle(selected []string) map[string][]string {
 	grouped := map[string][]string{}
 	for _, id := range selected {
-		name, ok := bundleBySkill[id]
-		if !ok {
-			return nil, fmt.Errorf("selected skill %q is not in a bundle", id)
-		}
-		grouped[name] = append(grouped[name], id)
+		home := library.HomeBundle(id)
+		grouped[home] = append(grouped[home], id)
 	}
-	return grouped, nil
+	return grouped
 }
 
 func singleLinePickerText(text string) string {
